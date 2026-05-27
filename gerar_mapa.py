@@ -30,7 +30,6 @@ class AnalisadorAST(ast.NodeVisitor):
                 bases.append(f"{base.value.id}.{base.attr}")
         
         heranca = f"({', '.join(bases)})" if bases else ""
-        
         self.resultado.append(f"\n* **`class {no.name}{heranca}:`**")
         
         docstring = ast.get_docstring(no)
@@ -48,7 +47,7 @@ class AnalisadorAST(ast.NodeVisitor):
         #     return
 
         prefixo = "  * " if self.classe_atual else "* "
-        argumentos = [arg.arg for arg in no.args.args if arg.arg != 'self'] # 'self' é implícito, não precisamos gastar tokens
+        argumentos = [arg.arg for arg in no.args.args if arg.arg != 'self']
         args_formatados = ", ".join(argumentos)
         
         retorno = ""
@@ -68,12 +67,10 @@ class AnalisadorAST(ast.NodeVisitor):
 def processar_arquivo_py(caminho_arquivo: Path, caminho_base: Path) -> str:
     """Lê um arquivo .py e retorna seu resumo em Markdown."""
     caminho_relativo = caminho_arquivo.relative_to(caminho_base)
-    
     try:
         conteudo = caminho_arquivo.read_text(encoding="utf-8")
         arvore = ast.parse(conteudo)
         
-        # Pega a docstring do arquivo (módulo)
         doc_modulo = ast.get_docstring(arvore)
         doc_texto = f"\n> *{doc_modulo.strip().split(chr(10))[0]}*\n" if doc_modulo else ""
         
@@ -82,9 +79,7 @@ def processar_arquivo_py(caminho_arquivo: Path, caminho_base: Path) -> str:
         
         resumo = f"### 📁 `{caminho_relativo}`\n{doc_texto}"
         
-        # Adiciona os imports encontrados
         if analisador.imports:
-            # Pega apenas os 5 primeiros imports ou imports internos para não poluir muito
             imports_str = ", ".join(analisador.imports[:5])
             if len(analisador.imports) > 5:
                 imports_str += ", ..."
@@ -106,14 +101,19 @@ def extrair_arquivos_py_do_gitignore(caminho_gitignore: Path) -> list:
     try:
         linhas = caminho_gitignore.read_text(encoding="utf-8").splitlines()
     except Exception as e:
-        print(f"Erro ao ler o arquivo .gitignore: {e}")
+        print(f"❌ Erro fatal ao ler o arquivo .gitignore: {e}")
         sys.exit(1)
+
+    print(f"📄 .gitignore lido com {len(linhas)} linhas.")
 
     for linha in linhas:
         linha = linha.strip()
         if linha.startswith('!') and not linha.endswith('/'):
             padrao = linha[1:] 
-            for arquivo_encontrado in diretorio_projeto.glob(padrao):
+            arquivos_com_padrao = list(diretorio_projeto.glob(padrao))
+            print(f"  🔍 Procurando padrão: '{padrao}' -> Encontrou {len(arquivos_com_padrao)} arquivo(s)")
+            
+            for arquivo_encontrado in arquivos_com_padrao:
                 if arquivo_encontrado.is_file() and arquivo_encontrado.suffix == '.py':
                     arquivos_py_encontrados.add(arquivo_encontrado.resolve())
 
@@ -122,13 +122,16 @@ def extrair_arquivos_py_do_gitignore(caminho_gitignore: Path) -> list:
 def extrair_secao_working_at(diretorio_projeto: Path) -> str:
     """Procura o CHANGELOG.md e extrai apenas a seção ## [WorkingAt]."""
     changelog_path = diretorio_projeto / "CHANGELOG.md"
+    print(f"🔍 Procurando CHANGELOG em: {changelog_path}")
     
     if not changelog_path.exists():
+        print("  ⚠️ CHANGELOG.md não encontrado.")
         return ""
 
     try:
         linhas = changelog_path.read_text(encoding="utf-8").splitlines()
     except Exception as e:
+        print(f"  ❌ Erro ao ler CHANGELOG.md: {e}")
         return f"\n*Erro ao ler CHANGELOG.md: {e}*\n"
 
     capturando = False
@@ -137,40 +140,44 @@ def extrair_secao_working_at(diretorio_projeto: Path) -> str:
     for linha in linhas:
         linha_limpa = linha.strip()
         
-        # Identifica o início da seção
         if linha_limpa.startswith("## [WorkingAt]"):
             capturando = True
             trecho_extraido.append(linha)
             continue
         
         if capturando:
-            # Se encontrar outro cabeçalho '##', significa que a seção acabou
             if linha_limpa.startswith("## "):
                 break
             trecho_extraido.append(linha)
 
     if not trecho_extraido:
+        print("  ⚠️ Seção '## [WorkingAt]' não encontrada no CHANGELOG.")
         return ""
 
-    # Formata o retorno para destacar bem no final do arquivo Markdown
+    print(f"  ✅ Seção '## [WorkingAt]' extraída com {len(trecho_extraido)} linhas.")
     resultado = "\n# 🛠️ Status Atual (CHANGELOG.md)\n"
     resultado += "\n".join(trecho_extraido) + "\n"
     return resultado
 
 def gerar_mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str):
-    # Adicionamos .resolve() para converter caminhos relativos do terminal em absolutos
+    print("\n🚀 --- INICIANDO PYRESUMIDOR --- 🚀")
     caminho_gitignore = Path(caminho_gitignore_str).resolve()
     diretorio_projeto = caminho_gitignore.parent
     
+    print(f"📂 Diretório do projeto: {diretorio_projeto}")
+    print(f"📄 Caminho do gitignore: {caminho_gitignore}")
+    
     if not caminho_gitignore.exists():
-        print(f"Erro: O arquivo '{caminho_gitignore}' não foi encontrado.")
+        print(f"❌ Erro: O arquivo '{caminho_gitignore}' não foi encontrado.")
         sys.exit(1)
 
     arquivos_para_processar = extrair_arquivos_py_do_gitignore(caminho_gitignore)
     
     if not arquivos_para_processar:
-        print("⚠️ Nenhum arquivo .py válido foi encontrado.")
+        print("⚠️ Nenhum arquivo .py válido foi encontrado. Abortando.")
         sys.exit(0)
+        
+    print(f"\n⚙️ Processando {len(arquivos_para_processar)} arquivos .py válidos...")
     
     mapa_completo = ["# Resumo da Arquitetura do Projeto\n"]
     mapa_completo.append("---\n")
@@ -209,14 +216,28 @@ def gerar_mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str):
     
     mapa_completo.append(instrucoes_ia)
 
-    # --- EXTRAÇÃO DO CHANGELOG ---
+    # Verifica o CHANGELOG
+    print("\n🔍 Analisando CHANGELOG...")
     secao_working_at = extrair_secao_working_at(diretorio_projeto)
     if secao_working_at:
         mapa_completo.append(secao_working_at)
-    # -----------------------------------------
     
-    Path(arquivo_saida_str).write_text("\n".join(mapa_completo), encoding="utf-8")
-    print(f"✅ Mapa gerado com sucesso em: {arquivo_saida_str}")
+    arquivo_saida = Path(arquivo_saida_str).resolve()
+    print(f"\n💾 Salvando resultado em: {arquivo_saida}")
+    
+    try:
+        arquivo_saida.write_text("\n".join(mapa_completo), encoding="utf-8")
+        print(f"✅ Mapa gerado com sucesso!")
+    except Exception as e:
+        print(f"❌ Erro ao salvar o arquivo: {e}")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Gera um resumo do código Python baseado no .gitignore.")
+    parser.add_argument("gitignore_path", help="Caminho para o arquivo .gitignore do projeto alvo.")
+    parser.add_argument("output_path", help="Caminho e nome do arquivo .md de saída.")
+    
+    args = parser.parse_args()
+    gerar_mapa_repositorio(args.gitignore_path, args.output_path)
 
 # Como utilizar
 # python gerar_mapa.py <CAMINHO_DO_GITIGNORE> <CAMINHO_DO_MARKDOWN_DE_SAIDA>
