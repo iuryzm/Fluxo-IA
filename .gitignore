@@ -1,4 +1,5 @@
 *
 
 !.gitignore
+!extrator.py
 !gerar_mapa.py
