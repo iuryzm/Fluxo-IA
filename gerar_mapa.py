@@ -120,7 +120,7 @@ def extrair_arquivos_py_do_gitignore(caminho_gitignore: Path) -> list:
     return sorted(list(arquivos_py_encontrados))
 
 def gerar_mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str):
-    # Adicionamos .resolve() para converter o "..\VisualizadorPN" em "C:\...\VisualizadorPN"
+    # Adicionamos .resolve() para converter caminhos relativos do terminal em absolutos
     caminho_gitignore = Path(caminho_gitignore_str).resolve()
     diretorio_projeto = caminho_gitignore.parent
     
@@ -138,11 +138,40 @@ def gerar_mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str):
     mapa_completo.append("---\n")
     
     for arquivo in arquivos_para_processar:
-        # Passamos o diretorio_projeto para calcular o caminho relativo
         resumo_arquivo = processar_arquivo_py(arquivo, diretorio_projeto)
         mapa_completo.append(resumo_arquivo)
         mapa_completo.append("\n---\n")
         
+    # Instruções formatadas com segurança (evitando aspas triplas e bugs de markdown)
+    instrucoes_ia = (
+        "# 🤖 INSTRUÇÕES ESTRITAS PARA A IA\n"
+        "Você está analisando a arquitetura de um projeto. Ao receber uma tarefa do usuário baseada neste mapa, "
+        "você deve informar quais arquivos, classes ou funções precisa visualizar o código-fonte para implementar a solução.\n\n"
+        "Para que o script de extração automática do usuário funcione, você **DEVE** incluir em sua resposta um bloco "
+        "de código contendo um objeto JSON estrito com o mapeamento do que você precisa.\n\n"
+        "Siga EXATAMENTE este formato:\n\n"
+        "```json\n"
+        "{\n"
+        "  \"arquivos_completos\": [\n"
+        "    \"caminho/relativo/do/arquivo1.py\"\n"
+        "  ],\n"
+        "  \"classes\": {\n"
+        "    \"caminho/relativo/do/arquivo2.py\": [\"NomeDaClasse\", \"OutraClasse\"]\n"
+        "  },\n"
+        "  \"funcoes\": {\n"
+        "    \"caminho/relativo/do/arquivo3.py\": [\"nome_da_funcao\", \"outra_funcao\"]\n"
+        "  }\n"
+        "}\n"
+        "```\n\n"
+        "**Regras do JSON:**\n"
+        "1. Use as chaves `\"arquivos_completos\"`, `\"classes\"` e `\"funcoes\"`.\n"
+        "2. Se não precisar de itens para uma das chaves, deixe a lista ou o dicionário vazio (ex: `\"arquivos_completos\": []`).\n"
+        "3. Peça `\"arquivos_completos\"` APENAS se precisar modificar o escopo global ou entender o arquivo inteiro. "
+        "Para economizar contexto, dê preferência máxima a extrair `\"classes\"` ou `\"funcoes\"` isoladas.\n"
+    )
+    
+    mapa_completo.append(instrucoes_ia)
+    
     Path(arquivo_saida_str).write_text("\n".join(mapa_completo), encoding="utf-8")
     print(f"✅ Mapa gerado com sucesso em: {arquivo_saida_str}")
 
