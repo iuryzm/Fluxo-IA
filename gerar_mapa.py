@@ -119,8 +119,7 @@ def extrair_arquivos_py_do_gitignore(caminho_gitignore: Path) -> list:
 
     return sorted(list(arquivos_py_encontrados))
 
-def extrair_secao_working_at(diretorio_projeto: Path) -> str:
-    """Procura o CHANGELOG.md e extrai apenas a seção ## [WorkingAt]."""
+def extrair_contexto_changelog(diretorio_projeto: Path) -> str:
     changelog_path = diretorio_projeto / "CHANGELOG.md"
     print(f"🔍 Procurando CHANGELOG em: {changelog_path}")
     
@@ -136,26 +135,30 @@ def extrair_secao_working_at(diretorio_projeto: Path) -> str:
 
     capturando = False
     trecho_extraido = []
+    secoes_alvo = ["## [Unreleased]", "## [WorkingAt]"]
 
     for linha in linhas:
         linha_limpa = linha.strip()
         
-        if linha_limpa.startswith("## [WorkingAt]"):
-            capturando = True
-            trecho_extraido.append(linha)
-            continue
-        
-        if capturando:
-            if linha_limpa.startswith("## "):
-                break
+        # Verifica se chegamos a um título '## '
+        if linha_limpa.startswith("## "):
+            # Se for uma das seções alvo, liga a captura
+            if any(linha_limpa.startswith(alvo) for alvo in secoes_alvo):
+                capturando = True
+                trecho_extraido.append(linha)
+            else:
+                # Se for qualquer outro título (ex: ## [1.0.0]), desliga a captura
+                capturando = False
+        # Se estivermos no modo de captura, adicionamos a linha
+        elif capturando:
             trecho_extraido.append(linha)
 
     if not trecho_extraido:
-        print("  ⚠️ Seção '## [WorkingAt]' não encontrada no CHANGELOG.")
+        print("  ⚠️ Nenhuma seção '[Unreleased]' ou '[WorkingAt]' encontrada no CHANGELOG.")
         return ""
 
-    print(f"  ✅ Seção '## [WorkingAt]' extraída com {len(trecho_extraido)} linhas.")
-    resultado = "\n# 🛠️ Status Atual (CHANGELOG.md)\n"
+    print(f"  ✅ Contexto do CHANGELOG extraído com {len(trecho_extraido)} linhas.")
+    resultado = "\n# 🛠️ Status Atual e Não Publicado (CHANGELOG.md)\n"
     resultado += "\n".join(trecho_extraido) + "\n"
     return resultado
 
@@ -218,9 +221,9 @@ def gerar_mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str):
 
     # Verifica o CHANGELOG
     print("\n🔍 Analisando CHANGELOG...")
-    secao_working_at = extrair_secao_working_at(diretorio_projeto)
-    if secao_working_at:
-        mapa_completo.append(secao_working_at)
+    contexto_changelog = extrair_contexto_changelog(diretorio_projeto)
+    if contexto_changelog:
+        mapa_completo.append(contexto_changelog)
     
     arquivo_saida = Path(arquivo_saida_str).resolve()
     print(f"\n💾 Salvando resultado em: {arquivo_saida}")
