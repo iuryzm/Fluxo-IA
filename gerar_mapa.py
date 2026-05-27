@@ -119,6 +119,44 @@ def extrair_arquivos_py_do_gitignore(caminho_gitignore: Path) -> list:
 
     return sorted(list(arquivos_py_encontrados))
 
+def extrair_secao_working_at(diretorio_projeto: Path) -> str:
+    """Procura o CHANGELOG.md e extrai apenas a seção ## [WorkingAt]."""
+    changelog_path = diretorio_projeto / "CHANGELOG.md"
+    
+    if not changelog_path.exists():
+        return ""
+
+    try:
+        linhas = changelog_path.read_text(encoding="utf-8").splitlines()
+    except Exception as e:
+        return f"\n*Erro ao ler CHANGELOG.md: {e}*\n"
+
+    capturando = False
+    trecho_extraido = []
+
+    for linha in linhas:
+        linha_limpa = linha.strip()
+        
+        # Identifica o início da seção
+        if linha_limpa.startswith("## [WorkingAt]"):
+            capturando = True
+            trecho_extraido.append(linha)
+            continue
+        
+        if capturando:
+            # Se encontrar outro cabeçalho '##', significa que a seção acabou
+            if linha_limpa.startswith("## "):
+                break
+            trecho_extraido.append(linha)
+
+    if not trecho_extraido:
+        return ""
+
+    # Formata o retorno para destacar bem no final do arquivo Markdown
+    resultado = "\n# 🛠️ Status Atual (CHANGELOG.md)\n"
+    resultado += "\n".join(trecho_extraido) + "\n"
+    return resultado
+
 def gerar_mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str):
     # Adicionamos .resolve() para converter caminhos relativos do terminal em absolutos
     caminho_gitignore = Path(caminho_gitignore_str).resolve()
@@ -142,7 +180,6 @@ def gerar_mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str):
         mapa_completo.append(resumo_arquivo)
         mapa_completo.append("\n---\n")
         
-    # Instruções formatadas com segurança (evitando aspas triplas e bugs de markdown)
     instrucoes_ia = (
         "# 🤖 INSTRUÇÕES ESTRITAS PARA A IA\n"
         "Você está analisando a arquitetura de um projeto. Ao receber uma tarefa do usuário baseada neste mapa, "
@@ -171,17 +208,15 @@ def gerar_mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str):
     )
     
     mapa_completo.append(instrucoes_ia)
+
+    # --- EXTRAÇÃO DO CHANGELOG ---
+    secao_working_at = extrair_secao_working_at(diretorio_projeto)
+    if secao_working_at:
+        mapa_completo.append(secao_working_at)
+    # -----------------------------------------
     
     Path(arquivo_saida_str).write_text("\n".join(mapa_completo), encoding="utf-8")
     print(f"✅ Mapa gerado com sucesso em: {arquivo_saida_str}")
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Gera um resumo do código Python baseado no .gitignore.")
-    parser.add_argument("gitignore_path", help="Caminho para o arquivo .gitignore do projeto alvo.")
-    parser.add_argument("output_path", help="Caminho e nome do arquivo .md de saída.")
-    
-    args = parser.parse_args()
-    gerar_mapa_repositorio(args.gitignore_path, args.output_path)
 
 # Como utilizar
 # python gerar_mapa.py <CAMINHO_DO_GITIGNORE> <CAMINHO_DO_MARKDOWN_DE_SAIDA>
