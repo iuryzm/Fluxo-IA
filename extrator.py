@@ -134,4 +134,4 @@ if __name__ == "__main__":
     executar_extracao(args.resposta_ia, args.diretorio_projeto, args.output_path)
 
 # Como usar
-# python .\extrator.py .\test\resposta_teste.txt ..\VisualizadorPN .\test\codigo_para_ia.md
+# python .\extrator.py .\test\resposta.json ..\VisualizadorPN .\test\codigo_para_ia.md

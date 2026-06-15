@@ -27,16 +27,20 @@ class AnalisadorAST(ast.NodeVisitor):
             if isinstance(base, ast.Name):
                 bases.append(base.id)
             elif isinstance(base, ast.Attribute):
-                bases.append(f"{base.value.id}.{base.attr}")
-        
+                # Tenta reconstruir o nome completo (ex: modulo.Classe) sem quebrar em casos aninhados
+                try:
+                    bases.append(ast.unparse(base))
+                except Exception:
+                    bases.append(base.attr)
+
         heranca = f"({', '.join(bases)})" if bases else ""
         self.resultado.append(f"\n* **`class {no.name}{heranca}:`**")
-        
+
         docstring = ast.get_docstring(no)
         if docstring:
             primeira_linha = docstring.strip().split('\n')[0]
             self.resultado.append(f"  * *Doc:* {primeira_linha}")
-            
+
         self.classe_atual = no.name
         self.generic_visit(no)
         self.classe_atual = None
@@ -49,16 +53,16 @@ class AnalisadorAST(ast.NodeVisitor):
         prefixo = "  * " if self.classe_atual else "* "
         argumentos = [arg.arg for arg in no.args.args if arg.arg != 'self']
         args_formatados = ", ".join(argumentos)
-        
+
         retorno = ""
         if no.returns:
             try:
                 retorno = f" -> {ast.unparse(no.returns)}"
             except Exception:
                 pass
-                
+
         self.resultado.append(f"{prefixo}`def {no.name}({args_formatados}){retorno}`")
-        
+
         docstring = ast.get_docstring(no)
         if docstring:
             primeira_linha = docstring.strip().split('\n')[0]
@@ -70,15 +74,15 @@ def processar_arquivo_py(caminho_arquivo: Path, caminho_base: Path) -> str:
     try:
         conteudo = caminho_arquivo.read_text(encoding="utf-8")
         arvore = ast.parse(conteudo)
-        
+
         doc_modulo = ast.get_docstring(arvore)
         doc_texto = f"\n> *{doc_modulo.strip().split(chr(10))[0]}*\n" if doc_modulo else ""
-        
+
         analisador = AnalisadorAST()
         analisador.visit(arvore)
-        
+
         resumo = f"### 📁 `{caminho_relativo}`\n{doc_texto}"
-        
+
         if analisador.imports:
             imports_str = ", ".join(analisador.imports[:5])
             if len(analisador.imports) > 5:
@@ -90,13 +94,44 @@ def processar_arquivo_py(caminho_arquivo: Path, caminho_base: Path) -> str:
         else:
             resumo += "\n".join(analisador.resultado) + "\n"
         return resumo
-        
+
     except Exception as e:
         return f"### 📁 `{caminho_relativo}`\n*Erro ao ler arquivo: {e}*\n"
 
-def extrair_arquivos_py_do_gitignore(caminho_gitignore: Path) -> list:
+def processar_arquivo_outro(caminho_arquivo: Path, caminho_base: Path, max_linhas_preview: int = 20) -> str:
+    """Lista um arquivo não-Python (config, etc.) com uma prévia opcional do conteúdo.
+
+    A IA não consegue 'parsear' esses arquivos como faz com .py, então o objetivo aqui
+    é apenas anunciar que o arquivo existe (com seu caminho) e dar uma amostra do conteúdo
+    para que ela decida se precisa pedi-lo inteiro via "arquivos_completos".
+    """
+    caminho_relativo = caminho_arquivo.relative_to(caminho_base)
+    extensao = caminho_arquivo.suffix.lstrip('.') or "sem extensão"
+    resumo = f"### ⚙️ `{caminho_relativo}`\n"
+
+    try:
+        tamanho_kb = caminho_arquivo.stat().st_size / 1024
+        resumo += f"*(tipo: `{extensao}` · {tamanho_kb:.1f} KB)*\n"
+
+        if max_linhas_preview > 0:
+            linhas = caminho_arquivo.read_text(encoding="utf-8", errors="replace").splitlines()
+            preview = "\n".join(linhas[:max_linhas_preview])
+            if len(linhas) > max_linhas_preview:
+                preview += f"\n... (+{len(linhas) - max_linhas_preview} linhas ocultas)"
+            # Usa a extensão como dica de linguagem para o bloco de código (json, yaml, toml...)
+            lang = caminho_arquivo.suffix.lstrip('.')
+            resumo += f"```{lang}\n{preview}\n```\n"
+        return resumo
+
+    except Exception as e:
+        resumo += f"*Erro ao ler arquivo: {e}*\n"
+        return resumo
+
+def extrair_arquivos_do_gitignore(caminho_gitignore: Path) -> tuple:
+    """Lê as negações (!) do .gitignore e separa em (arquivos_py, arquivos_outros)."""
     diretorio_projeto = caminho_gitignore.parent
-    arquivos_py_encontrados = set() 
+    arquivos_py_encontrados = set()
+    arquivos_outros_encontrados = set()
 
     try:
         linhas = caminho_gitignore.read_text(encoding="utf-8").splitlines()
@@ -109,20 +144,24 @@ def extrair_arquivos_py_do_gitignore(caminho_gitignore: Path) -> list:
     for linha in linhas:
         linha = linha.strip()
         if linha.startswith('!') and not linha.endswith('/'):
-            padrao = linha[1:] 
+            padrao = linha[1:]
             arquivos_com_padrao = list(diretorio_projeto.glob(padrao))
             print(f"  🔍 Procurando padrão: '{padrao}' -> Encontrou {len(arquivos_com_padrao)} arquivo(s)")
-            
-            for arquivo_encontrado in arquivos_com_padrao:
-                if arquivo_encontrado.is_file() and arquivo_encontrado.suffix == '.py':
-                    arquivos_py_encontrados.add(arquivo_encontrado.resolve())
 
-    return sorted(list(arquivos_py_encontrados))
+            for arquivo_encontrado in arquivos_com_padrao:
+                if not arquivo_encontrado.is_file():
+                    continue
+                if arquivo_encontrado.suffix == '.py':
+                    arquivos_py_encontrados.add(arquivo_encontrado.resolve())
+                else:
+                    arquivos_outros_encontrados.add(arquivo_encontrado.resolve())
+
+    return sorted(arquivos_py_encontrados), sorted(arquivos_outros_encontrados)
 
 def extrair_contexto_changelog(diretorio_projeto: Path) -> str:
     changelog_path = diretorio_projeto / "CHANGELOG.md"
     print(f"🔍 Procurando CHANGELOG em: {changelog_path}")
-    
+
     if not changelog_path.exists():
         print("  ⚠️ CHANGELOG.md não encontrado.")
         return ""
@@ -139,7 +178,7 @@ def extrair_contexto_changelog(diretorio_projeto: Path) -> str:
 
     for linha in linhas:
         linha_limpa = linha.strip()
-        
+
         # Verifica se chegamos a um título '## '
         if linha_limpa.startswith("## "):
             # Se for uma das seções alvo, liga a captura
@@ -162,34 +201,48 @@ def extrair_contexto_changelog(diretorio_projeto: Path) -> str:
     resultado += "\n".join(trecho_extraido) + "\n"
     return resultado
 
-def gerar_mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str):
+def gerar_mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, linhas_config: int = 20):
     print("\n🚀 --- INICIANDO PYRESUMIDOR --- 🚀")
     caminho_gitignore = Path(caminho_gitignore_str).resolve()
     diretorio_projeto = caminho_gitignore.parent
-    
+
     print(f"📂 Diretório do projeto: {diretorio_projeto}")
     print(f"📄 Caminho do gitignore: {caminho_gitignore}")
-    
+
     if not caminho_gitignore.exists():
         print(f"❌ Erro: O arquivo '{caminho_gitignore}' não foi encontrado.")
         sys.exit(1)
 
-    arquivos_para_processar = extrair_arquivos_py_do_gitignore(caminho_gitignore)
-    
-    if not arquivos_para_processar:
-        print("⚠️ Nenhum arquivo .py válido foi encontrado. Abortando.")
+    arquivos_py, arquivos_outros = extrair_arquivos_do_gitignore(caminho_gitignore)
+
+    if not arquivos_py and not arquivos_outros:
+        print("⚠️ Nenhum arquivo válido foi encontrado. Abortando.")
         sys.exit(0)
-        
-    print(f"\n⚙️ Processando {len(arquivos_para_processar)} arquivos .py válidos...")
-    
+
+    print(f"\n⚙️ Processando {len(arquivos_py)} arquivos .py e {len(arquivos_outros)} arquivos de config/outros...")
+
     mapa_completo = ["# Resumo da Arquitetura do Projeto\n"]
     mapa_completo.append("---\n")
-    
-    for arquivo in arquivos_para_processar:
+
+    # --- Seção 1: Arquivos Python ---
+    for arquivo in arquivos_py:
         resumo_arquivo = processar_arquivo_py(arquivo, diretorio_projeto)
         mapa_completo.append(resumo_arquivo)
         mapa_completo.append("\n---\n")
-        
+
+    # --- Seção 2: Arquivos de Configuração e Outros ---
+    if arquivos_outros:
+        mapa_completo.append("\n# ⚙️ Arquivos de Configuração e Outros\n")
+        mapa_completo.append(
+            "*Estes arquivos não são código Python e, portanto, não foram analisados por classe/função. "
+            "Para vê-los, peça-os via `\"arquivos_completos\"`.*\n"
+        )
+        mapa_completo.append("---\n")
+        for arquivo in arquivos_outros:
+            resumo_arquivo = processar_arquivo_outro(arquivo, diretorio_projeto, linhas_config)
+            mapa_completo.append(resumo_arquivo)
+            mapa_completo.append("\n---\n")
+
     instrucoes_ia = (
         "# 🤖 INSTRUÇÕES ESTRITAS PARA A IA\n"
         "Você está analisando a arquitetura de um projeto. Ao receber uma tarefa do usuário baseada neste mapa, "
@@ -200,7 +253,8 @@ def gerar_mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str):
         "```json\n"
         "{\n"
         "  \"arquivos_completos\": [\n"
-        "    \"caminho/relativo/do/arquivo1.py\"\n"
+        "    \"caminho/relativo/do/arquivo1.py\",\n"
+        "    \"caminho/relativo/do/config.yaml\"\n"
         "  ],\n"
         "  \"classes\": {\n"
         "    \"caminho/relativo/do/arquivo2.py\": [\"NomeDaClasse\", \"OutraClasse\"]\n"
@@ -215,8 +269,11 @@ def gerar_mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str):
         "2. Se não precisar de itens para uma das chaves, deixe a lista ou o dicionário vazio (ex: `\"arquivos_completos\": []`).\n"
         "3. Peça `\"arquivos_completos\"` APENAS se precisar modificar o escopo global ou entender o arquivo inteiro. "
         "Para economizar contexto, dê preferência máxima a extrair `\"classes\"` ou `\"funcoes\"` isoladas.\n"
+        "4. Arquivos listados na seção **'⚙️ Arquivos de Configuração e Outros'** (ex: `.json`, `.yaml`, `.toml`, `.env`, `.cfg`) "
+        "NÃO são código Python e só podem ser obtidos via `\"arquivos_completos\"`. Nunca tente pedir uma `\"classe\"` ou "
+        "`\"funcao\"` desses arquivos.\n"
     )
-    
+
     mapa_completo.append(instrucoes_ia)
 
     # Verifica o CHANGELOG
@@ -224,10 +281,10 @@ def gerar_mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str):
     contexto_changelog = extrair_contexto_changelog(diretorio_projeto)
     if contexto_changelog:
         mapa_completo.append(contexto_changelog)
-    
+
     arquivo_saida = Path(arquivo_saida_str).resolve()
     print(f"\n💾 Salvando resultado em: {arquivo_saida}")
-    
+
     try:
         arquivo_saida.write_text("\n".join(mapa_completo), encoding="utf-8")
         print(f"✅ Mapa gerado com sucesso!")
@@ -238,12 +295,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Gera um resumo do código Python baseado no .gitignore.")
     parser.add_argument("gitignore_path", help="Caminho para o arquivo .gitignore do projeto alvo.")
     parser.add_argument("output_path", help="Caminho e nome do arquivo .md de saída.")
-    
+    parser.add_argument(
+        "--linhas-config",
+        type=int,
+        default=20,
+        help="Nº de linhas de prévia exibidas para arquivos de config/outros. Use 0 para listar sem prévia (default: 20).",
+    )
+
     args = parser.parse_args()
-    gerar_mapa_repositorio(args.gitignore_path, args.output_path)
+    gerar_mapa_repositorio(args.gitignore_path, args.output_path, args.linhas_config)
 
 # Como utilizar
-# python gerar_mapa.py <CAMINHO_DO_GITIGNORE> <CAMINHO_DO_MARKDOWN_DE_SAIDA>
+# python gerar_mapa.py <CAMINHO_DO_GITIGNORE> <CAMINHO_DO_MARKDOWN_DE_SAIDA> [--linhas-config N]
 
 # Exemplo prático:
 # python gerar_mapa.py ../MeuSuperProjeto/.gitignore ../MeuSuperProjeto/resumo_do_projeto.md
+# python .\gerar_mapa.py ..\VisualizadorPN\.gitignore .\test\resumo_do_projeto.md --linhas-config 10
