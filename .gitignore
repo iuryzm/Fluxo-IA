@@ -2,6 +2,7 @@
 
 !.gitignore
 !CHANGELOG.md
+!LICENSE.md
 !README.md
 !aplicador.py
 !extrator.py
