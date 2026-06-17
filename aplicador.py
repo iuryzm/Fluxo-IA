@@ -9,11 +9,16 @@ from pathlib import Path
 from collections import defaultdict
 import sys
 
+# Variáveis auxiliares para evitar que o renderizador de Markdown do chat
+# quebre este arquivo em vários blocos de código quando copiado.
+B3 = "`" * 3
+B4 = "`" * 4
+
 # ----------------------------------------------------------------------------
 # Bloco de instruções para colar no chat com a IA (fase de implementação).
 # Use `python aplicador.py --instrucoes` para imprimir isto no terminal.
 # ----------------------------------------------------------------------------
-INSTRUCOES_IA = r"""
+INSTRUCOES_IA = f"""
 # 🤖 INSTRUÇÕES PARA GERAR ALTERAÇÕES (aplicador.py)
 
 Quando o usuário pedir para implementar a solução, NÃO escreva diffs nem números
@@ -23,32 +28,42 @@ substituição, então você nunca precisa se preocupar com posições no arquiv
 
 Sua resposta deve conter DUAS partes:
 
-1) Um bloco ````json com o PLANO de operações.
-2) Um bloco de código para cada operação, marcado com `id=<identificador>`.
+1) Um bloco {B4}json com o PLANO de operações.
+2) UM ÚNICO bloco de código contendo todas as operações, separadas por um comentário de ID.
 
-## 1. Plano (bloco ````json)
+## 1. Plano (bloco {B4}json)
 
-````json
-{
+{B4}json
+{{
   "operacoes": [
-    {"acao": "substituir", "arquivo": "src/core.py", "tipo": "funcao", "alvo": "processa", "codigo_id": "b1"},
-    {"acao": "substituir", "arquivo": "src/core.py", "tipo": "classe", "alvo": "Motor",    "codigo_id": "b2"},
-    {"acao": "substituir", "arquivo": "src/core.py", "tipo": "metodo", "alvo": "Motor.run", "codigo_id": "b3"},
-    {"acao": "adicionar",  "arquivo": "src/core.py", "tipo": "funcao", "alvo": "nova_func", "codigo_id": "b4"},
-    {"acao": "adicionar",  "arquivo": "src/core.py", "tipo": "metodo", "alvo": "Motor.reset", "codigo_id": "b5"},
-    {"acao": "arquivo",    "arquivo": "config.yaml", "codigo_id": "b6"}
+    {{"acao": "substituir", "arquivo": "src/core.py", "tipo": "funcao", "alvo": "processa", "codigo_id": "b1"}},
+    {{"acao": "substituir", "arquivo": "src/core.py", "tipo": "classe", "alvo": "Motor",    "codigo_id": "b2"}},
+    {{"acao": "substituir", "arquivo": "src/core.py", "tipo": "metodo", "alvo": "Motor.run", "codigo_id": "b3"}},
+    {{"acao": "adicionar",  "arquivo": "src/core.py", "tipo": "funcao", "alvo": "nova_func", "codigo_id": "b4"}},
+    {{"acao": "adicionar",  "arquivo": "src/core.py", "tipo": "metodo", "alvo": "Motor.reset", "codigo_id": "b5"}},
+    {{"acao": "arquivo",    "arquivo": "config.yaml", "codigo_id": "b6"}}
   ]
-}
-````
+}}
+{B4}
 
-## 2. Blocos de código (um por operação)
+## 2. Bloco de código ÚNICO
 
-`````
-````python id=b1
+Coloque todos os trechos de código em um ÚNICO bloco. Antes de cada função, classe ou
+arquivo, adicione um comentário separador EXATAMENTE neste formato: `# --- id=<codigo_id> ---`
+
+{B3}python
+# --- id=b1 ---
 def processa(self, dados):
     return dados * 2
-````
-`````
+
+# --- id=b2 ---
+class Motor:
+    pass
+
+# --- id=b3 ---
+def run(self):
+    print("running")
+{B3}
 
 ## Regras
 1. `acao`: "substituir" (nó existente), "adicionar" (nó novo) ou "arquivo"
@@ -59,14 +74,19 @@ def processa(self, dados):
    "adicionar" com tipo "funcao"/"classe" insere no nível do módulo.
 3. Entregue SEMPRE a definição completa, incluindo decoradores (@property, etc.).
 4. Não se preocupe com indentação: o script re-indenta para a coluna correta.
-5. Cada `codigo_id` do plano deve ter um bloco ````...```` correspondente com `id=` igual.
-6. Não inclua números de linha, ````diff```` ou contexto ao redor — só o código novo.
+5. Cada `codigo_id` do plano deve ter um `# --- id=... ---` correspondente no bloco de código.
+6. Não inclua números de linha, diffs ou contexto ao redor — só o código novo.
 """
 
 
 def carregar_plano(texto: str) -> dict:
-    """Extrai o bloco ````json```` com o plano de operações da resposta da IA."""
-    match = re.search(r'````json\s*(.*?)\s*````', texto, re.DOTALL | re.IGNORECASE)
+    """Extrai o bloco json com o plano de operações da resposta da IA."""
+    # Tenta achar o bloco com 4 crases
+    match = re.search(rf'{B4}json\s*(.*?)\s*{B4}', texto, re.DOTALL | re.IGNORECASE)
+    if not match:
+        # Fallback para 3 crases
+        match = re.search(rf'{B3}json\s*(.*?)\s*{B3}', texto, re.DOTALL | re.IGNORECASE)
+        
     if match:
         bloco = match.group(1)
     else:
@@ -74,7 +94,7 @@ def carregar_plano(texto: str) -> dict:
         if inicio != -1 and fim != -1:
             bloco = texto[inicio:fim + 1]
         else:
-            print("❌ Não encontrei um bloco ````json```` (plano) na resposta da IA.")
+            print(f"❌ Não encontrei um bloco {B4}json (plano) na resposta da IA.")
             sys.exit(1)
     try:
         return json.loads(bloco)
@@ -85,12 +105,32 @@ def carregar_plano(texto: str) -> dict:
 
 
 def indexar_blocos_codigo(texto: str) -> dict:
-    """Indexa por id todos os blocos ````... id=<algo> ...````.
-
-    O bloco ````json```` do plano não tem `id=`, então é ignorado naturalmente.
     """
-    padrao = re.compile(r'````[^\n]*\bid=([^\s`]+)[^\n]*\n(.*?)\n````', re.DOTALL)
-    return {m.group(1): m.group(2) for m in padrao.finditer(texto)}
+    Localiza comentários no formato `# --- id=<algo> ---` e mapeia
+    para o código que vem logo abaixo dele, até o próximo ID ou fim do texto.
+    """
+    blocos = {}
+    padrao_id = re.compile(r'^#\s*---\s*id=([a-zA-Z0-9_]+)\s*---$', re.MULTILINE)
+    matches = list(padrao_id.finditer(texto))
+
+    for i, match in enumerate(matches):
+        codigo_id = match.group(1)
+        inicio_codigo = match.end()
+
+        if i + 1 < len(matches):
+            fim_codigo = matches[i + 1].start()
+        else:
+            fim_codigo = len(texto)
+
+        codigo_bruto = texto[inicio_codigo:fim_codigo]
+
+        # Limpa possíveis crases de fechamento de markdown (```) que
+        # possam existir ao final do último bloco de código.
+        # Usa regex com 1 crase avaliada para não quebrar a UI
+        codigo_limpo = re.sub(r'^`{3,}.*$', '', codigo_bruto, flags=re.MULTILINE).strip()
+        blocos[codigo_id] = codigo_limpo
+
+    return blocos
 
 
 def _encontrar_no(arvore: ast.Module, tipo: str, alvo: str):
@@ -291,7 +331,7 @@ def executar(resposta_path_str: str, projeto_path_str: str,
         print("⚠️ Nenhuma operação encontrada no plano (chave 'operacoes' vazia).")
         sys.exit(0)
 
-    print(f"🔧 {len(operacoes)} operação(ões) no plano · {len(blocos)} bloco(s) de código.")
+    print(f"🔧 {len(operacoes)} operação(ões) no plano · {len(blocos)} bloco(s) de código encontrados.")
     print(f"📂 Projeto: {projeto_path}")
     print(f"{'✍️  MODO APLICAR (vai gravar)' if aplicar else '👀 MODO DRY-RUN (nada será gravado)'}\n")
 

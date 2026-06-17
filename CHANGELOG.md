@@ -19,6 +19,15 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 ## [Unreleased]
 - No itens.
 
+## [1.0.2] - 2026.06.17
+
+### Changed
+- **Formato de saída da IA (`INSTRUCOES_IA`)**: A instrução agora exige que a IA agrupe todos os trechos de código modificados em um **único bloco de código**, utilizando comentários explícitos (`# --- id=<codigo_id> ---`) para separar os arquivos/métodos. Isso facilita a cópia do código pelo usuário.
+- **Parser de código (`indexar_blocos_codigo`)**: A lógica de extração foi reescrita para fatiar o texto baseando-se nos novos comentários separadores via Regex, em vez de depender de múltiplos blocos markdown separados.
+
+### Fixed
+- **Quebra de renderização no chat**: Correção de um problema onde o renderizador Markdown fatiaria visualmente o script ao tentar imprimi-lo ou copiá-lo. As crases (` ``` `) de delimitação do prompt agora são geradas dinamicamente via variáveis/f-strings no código Python.
+
 ## [1.0.1] - 2026.06.17
 ### Adicionado
 - `extrator.py` agora anexa automaticamente, ao fim do Markdown gerado, as
