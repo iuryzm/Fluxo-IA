@@ -4,8 +4,6 @@ Um trio de scripts em **Python puro (zero dependências externas)** para editar
 projetos grandes com a ajuda de uma IA de chat, gastando o **mínimo de contexto/tokens**
 possível.
 
-> O nome do projeto é só uma sugestão — sinta-se à vontade para renomear.
-
 ## O problema que isto resolve
 
 Colar um projeto inteiro no chat da IA estoura a janela de contexto, é caro e
