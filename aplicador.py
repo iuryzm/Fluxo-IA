@@ -23,12 +23,12 @@ substituição, então você nunca precisa se preocupar com posições no arquiv
 
 Sua resposta deve conter DUAS partes:
 
-1) Um bloco ```json com o PLANO de operações.
+1) Um bloco ````json com o PLANO de operações.
 2) Um bloco de código para cada operação, marcado com `id=<identificador>`.
 
-## 1. Plano (bloco ```json)
+## 1. Plano (bloco ````json)
 
-```json
+````json
 {
   "operacoes": [
     {"acao": "substituir", "arquivo": "src/core.py", "tipo": "funcao", "alvo": "processa", "codigo_id": "b1"},
@@ -39,16 +39,16 @@ Sua resposta deve conter DUAS partes:
     {"acao": "arquivo",    "arquivo": "config.yaml", "codigo_id": "b6"}
   ]
 }
-```
+````
 
 ## 2. Blocos de código (um por operação)
 
-````
-```python id=b1
+`````
+````python id=b1
 def processa(self, dados):
     return dados * 2
-```
 ````
+`````
 
 ## Regras
 1. `acao`: "substituir" (nó existente), "adicionar" (nó novo) ou "arquivo"
@@ -59,14 +59,14 @@ def processa(self, dados):
    "adicionar" com tipo "funcao"/"classe" insere no nível do módulo.
 3. Entregue SEMPRE a definição completa, incluindo decoradores (@property, etc.).
 4. Não se preocupe com indentação: o script re-indenta para a coluna correta.
-5. Cada `codigo_id` do plano deve ter um bloco ```...``` correspondente com `id=` igual.
-6. Não inclua números de linha, ```diff``` ou contexto ao redor — só o código novo.
+5. Cada `codigo_id` do plano deve ter um bloco ````...```` correspondente com `id=` igual.
+6. Não inclua números de linha, ````diff```` ou contexto ao redor — só o código novo.
 """
 
 
 def carregar_plano(texto: str) -> dict:
-    """Extrai o bloco ```json``` com o plano de operações da resposta da IA."""
-    match = re.search(r'```json\s*(.*?)\s*```', texto, re.DOTALL | re.IGNORECASE)
+    """Extrai o bloco ````json```` com o plano de operações da resposta da IA."""
+    match = re.search(r'````json\s*(.*?)\s*````', texto, re.DOTALL | re.IGNORECASE)
     if match:
         bloco = match.group(1)
     else:
@@ -74,7 +74,7 @@ def carregar_plano(texto: str) -> dict:
         if inicio != -1 and fim != -1:
             bloco = texto[inicio:fim + 1]
         else:
-            print("❌ Não encontrei um bloco ```json``` (plano) na resposta da IA.")
+            print("❌ Não encontrei um bloco ````json```` (plano) na resposta da IA.")
             sys.exit(1)
     try:
         return json.loads(bloco)
@@ -85,11 +85,11 @@ def carregar_plano(texto: str) -> dict:
 
 
 def indexar_blocos_codigo(texto: str) -> dict:
-    """Indexa por id todos os blocos ```... id=<algo> ...```.
+    """Indexa por id todos os blocos ````... id=<algo> ...````.
 
-    O bloco ```json``` do plano não tem `id=`, então é ignorado naturalmente.
+    O bloco ````json```` do plano não tem `id=`, então é ignorado naturalmente.
     """
-    padrao = re.compile(r'```[^\n]*\bid=([^\s`]+)[^\n]*\n(.*?)\n```', re.DOTALL)
+    padrao = re.compile(r'````[^\n]*\bid=([^\s`]+)[^\n]*\n(.*?)\n````', re.DOTALL)
     return {m.group(1): m.group(2) for m in padrao.finditer(texto)}
 
 

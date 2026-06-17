@@ -5,6 +5,17 @@ import argparse
 from pathlib import Path
 import sys
 
+# Garante que o diretório deste script esteja no sys.path, para conseguir importar
+# o aplicador.py que fica ao lado dele (independente de onde o comando foi rodado).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+try:
+    # Reaproveita as instruções de formato do aplicador, para anexá-las ao fim
+    # da saída e fechar o ciclo do pipeline (extrair -> aplicar) sem cópia manual.
+    from aplicador import INSTRUCOES_IA
+except ImportError:
+    INSTRUCOES_IA = None
+
 class ExtratorAST(ast.NodeVisitor):
     def __init__(self, source_code, alvos_classes, alvos_funcoes):
         self.source_code = source_code
@@ -75,7 +86,8 @@ def processar_arquivo(caminho_arquivo: Path, classes_alvo: list, funcoes_alvo: l
     except Exception as e:
         return f"⚠️ Erro ao processar `{caminho_arquivo.name}`: {e}\n"
 
-def executar_extracao(resposta_path_str: str, projeto_path_str: str, saida_path_str: str):
+def executar_extracao(resposta_path_str: str, projeto_path_str: str, saida_path_str: str,
+                      incluir_instrucoes: bool = True):
     resposta_path = Path(resposta_path_str).resolve()
     projeto_path = Path(projeto_path_str).resolve()
     
@@ -121,17 +133,39 @@ def executar_extracao(resposta_path_str: str, projeto_path_str: str, saida_path_
             md_saida.append(f"\n*⚠️ Arquivo não encontrado no projeto.*\n")
         md_saida.append("---\n")
 
+    # 3. Instruções para a próxima resposta da IA (consumida pelo aplicador.py).
+    # Anexa o guia de formato (plano + blocos de código) ao fim da saída, para que
+    # a IA já saiba como devolver a solução sem você rodar `aplicador.py --instrucoes`.
+    if incluir_instrucoes:
+        if INSTRUCOES_IA:
+            md_saida.append("\n---\n")
+            md_saida.append(INSTRUCOES_IA)
+        else:
+            print("⚠️ Não encontrei o aplicador.py ao lado do extrator.py; as instruções "
+                  "de aplicação NÃO foram anexadas. Use --sem-instrucoes para silenciar este aviso.")
+
     Path(saida_path_str).write_text("\n".join(md_saida), encoding="utf-8")
-    print(f"✅ Extração concluída! Arquivo gerado em: {saida_path_str}")
+    sufixo = " (com instruções do aplicador anexadas)" if (incluir_instrucoes and INSTRUCOES_IA) else ""
+    print(f"✅ Extração concluída! Arquivo gerado em: {saida_path_str}{sufixo}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extrai código-fonte baseado em um JSON da IA.")
     parser.add_argument("resposta_ia", help="Caminho do arquivo txt/md com a resposta que a IA te deu.")
     parser.add_argument("diretorio_projeto", help="Caminho raiz do seu projeto (ex: ../VisualizadorPN).")
     parser.add_argument("output_path", help="Caminho do arquivo .md de saída com os códigos extraídos.")
+    parser.add_argument(
+        "--sem-instrucoes",
+        action="store_true",
+        help="Não anexa ao fim da saída as instruções de formato do aplicador.py "
+             "(plano + blocos de código).",
+    )
     
     args = parser.parse_args()
-    executar_extracao(args.resposta_ia, args.diretorio_projeto, args.output_path)
+    executar_extracao(args.resposta_ia, args.diretorio_projeto, args.output_path,
+                      incluir_instrucoes=not args.sem_instrucoes)
 
 # Como usar
 # python .\extrator.py .\test\resposta.json ..\VisualizadorPN .\test\codigo_para_ia.md
+#
+# Para gerar só o código, sem o guia de aplicação no fim:
+# python .\extrator.py .\test\resposta.json ..\VisualizadorPN .\test\codigo_para_ia.md --sem-instrucoes

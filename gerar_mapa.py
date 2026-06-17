@@ -1,5 +1,6 @@
 import ast
 import argparse
+import fnmatch
 from pathlib import Path
 import sys
 
@@ -98,6 +99,29 @@ def processar_arquivo_py(caminho_arquivo: Path, caminho_base: Path) -> str:
     except Exception as e:
         return f"### 📁 `{caminho_relativo}`\n*Erro ao ler arquivo: {e}*\n"
 
+def _parece_binario(caminho_arquivo: Path) -> bool:
+    """Heurística do Git: arquivo é binário se tem byte nulo ou não decodifica em UTF-8.
+
+    Evita despejar texto sem sentido (imagens, .pkl, .db, .ico, etc.) no mapa.
+    """
+    try:
+        amostra = caminho_arquivo.read_bytes()[:65536]
+    except Exception:
+        return True  # se nem dá pra ler como bytes, trata como binário (sem prévia)
+
+    if b"\x00" in amostra:
+        return True
+
+    try:
+        amostra.decode("utf-8")
+    except UnicodeDecodeError as e:
+        # Se o erro está bem no fim do bloco, pode ser um caractere multibyte
+        # cortado pelo limite de leitura — nesse caso, tratamos como texto.
+        if e.start >= len(amostra) - 3:
+            return False
+        return True
+    return False
+
 def processar_arquivo_outro(caminho_arquivo: Path, caminho_base: Path, max_linhas_preview: int = 20) -> str:
     """Lista um arquivo não-Python (config, etc.) com uma prévia opcional do conteúdo.
 
@@ -111,9 +135,18 @@ def processar_arquivo_outro(caminho_arquivo: Path, caminho_base: Path, max_linha
 
     try:
         tamanho_kb = caminho_arquivo.stat().st_size / 1024
-        resumo += f"*(tipo: `{extensao}` · {tamanho_kb:.1f} KB)*\n"
+    except Exception:
+        tamanho_kb = 0.0
 
-        if max_linhas_preview > 0:
+    # Binários: lista só os metadados, sem despejar conteúdo ilegível no mapa.
+    if _parece_binario(caminho_arquivo):
+        resumo += f"*(tipo: `{extensao}` · {tamanho_kb:.1f} KB · binário — conteúdo omitido)*\n"
+        return resumo
+
+    resumo += f"*(tipo: `{extensao}` · {tamanho_kb:.1f} KB)*\n"
+
+    if max_linhas_preview > 0:
+        try:
             linhas = caminho_arquivo.read_text(encoding="utf-8", errors="replace").splitlines()
             preview = "\n".join(linhas[:max_linhas_preview])
             if len(linhas) > max_linhas_preview:
@@ -121,17 +154,54 @@ def processar_arquivo_outro(caminho_arquivo: Path, caminho_base: Path, max_linha
             # Usa a extensão como dica de linguagem para o bloco de código (json, yaml, toml...)
             lang = caminho_arquivo.suffix.lstrip('.')
             resumo += f"```{lang}\n{preview}\n```\n"
-        return resumo
+        except Exception as e:
+            resumo += f"*Erro ao ler arquivo: {e}*\n"
 
-    except Exception as e:
-        resumo += f"*Erro ao ler arquivo: {e}*\n"
-        return resumo
+    return resumo
 
-def extrair_arquivos_do_gitignore(caminho_gitignore: Path) -> tuple:
-    """Lê as negações (!) do .gitignore e separa em (arquivos_py, arquivos_outros)."""
+def carregar_padroes_exclusao(diretorio_projeto: Path, excluir_cli: list) -> list:
+    """Junta os padrões de exclusão do CLI (--excluir) com os do arquivo .resumoignore."""
+    padroes = list(excluir_cli or [])
+
+    arquivo_ignore = diretorio_projeto / ".resumoignore"
+    if arquivo_ignore.exists():
+        try:
+            for linha in arquivo_ignore.read_text(encoding="utf-8").splitlines():
+                linha = linha.strip()
+                if linha and not linha.startswith("#"):
+                    padroes.append(linha)
+            print(f"🚫 .resumoignore encontrado ({arquivo_ignore.name}).")
+        except Exception as e:
+            print(f"  ⚠️ Erro ao ler .resumoignore: {e}")
+
+    if padroes:
+        print(f"🚫 {len(padroes)} padrão(ões) de exclusão ativo(s): {', '.join(padroes)}")
+    return padroes
+
+def _deve_excluir(caminho_arquivo: Path, diretorio_projeto: Path, padroes: list) -> bool:
+    """True se o arquivo casa com algum padrão glob (pelo caminho relativo OU pelo nome)."""
+    if not padroes:
+        return False
+    try:
+        rel = caminho_arquivo.relative_to(diretorio_projeto).as_posix()
+    except ValueError:
+        rel = caminho_arquivo.name
+    nome = caminho_arquivo.name
+    for padrao in padroes:
+        if fnmatch.fnmatch(rel, padrao) or fnmatch.fnmatch(nome, padrao):
+            return True
+    return False
+
+def extrair_arquivos_do_gitignore(caminho_gitignore: Path, padroes_exclusao: list = None) -> tuple:
+    """Lê as negações (!) do .gitignore e separa em (arquivos_py, arquivos_outros).
+
+    Arquivos que casam com `padroes_exclusao` (glob) ficam de fora do resumo.
+    """
+    padroes_exclusao = padroes_exclusao or []
     diretorio_projeto = caminho_gitignore.parent
     arquivos_py_encontrados = set()
     arquivos_outros_encontrados = set()
+    n_excluidos = 0
 
     try:
         linhas = caminho_gitignore.read_text(encoding="utf-8").splitlines()
@@ -151,10 +221,16 @@ def extrair_arquivos_do_gitignore(caminho_gitignore: Path) -> tuple:
             for arquivo_encontrado in arquivos_com_padrao:
                 if not arquivo_encontrado.is_file():
                     continue
+                if _deve_excluir(arquivo_encontrado, diretorio_projeto, padroes_exclusao):
+                    n_excluidos += 1
+                    continue
                 if arquivo_encontrado.suffix == '.py':
                     arquivos_py_encontrados.add(arquivo_encontrado.resolve())
                 else:
                     arquivos_outros_encontrados.add(arquivo_encontrado.resolve())
+
+    if n_excluidos:
+        print(f"🚫 {n_excluidos} arquivo(s) excluído(s) do resumo pelos padrões.")
 
     return sorted(arquivos_py_encontrados), sorted(arquivos_outros_encontrados)
 
@@ -201,7 +277,7 @@ def extrair_contexto_changelog(diretorio_projeto: Path) -> str:
     resultado += "\n".join(trecho_extraido) + "\n"
     return resultado
 
-def gerar_mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, linhas_config: int = 20):
+def gerar_mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, linhas_config: int = 20, excluir: list = None):
     print("\n🚀 --- INICIANDO PYRESUMIDOR --- 🚀")
     caminho_gitignore = Path(caminho_gitignore_str).resolve()
     diretorio_projeto = caminho_gitignore.parent
@@ -213,7 +289,8 @@ def gerar_mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, l
         print(f"❌ Erro: O arquivo '{caminho_gitignore}' não foi encontrado.")
         sys.exit(1)
 
-    arquivos_py, arquivos_outros = extrair_arquivos_do_gitignore(caminho_gitignore)
+    padroes_exclusao = carregar_padroes_exclusao(diretorio_projeto, excluir)
+    arquivos_py, arquivos_outros = extrair_arquivos_do_gitignore(caminho_gitignore, padroes_exclusao)
 
     if not arquivos_py and not arquivos_outros:
         print("⚠️ Nenhum arquivo válido foi encontrado. Abortando.")
@@ -301,13 +378,26 @@ if __name__ == "__main__":
         default=20,
         help="Nº de linhas de prévia exibidas para arquivos de config/outros. Use 0 para listar sem prévia (default: 20).",
     )
+    parser.add_argument(
+        "--excluir",
+        nargs="*",
+        default=[],
+        metavar="PADRAO",
+        help="Padrões glob de arquivos a NÃO incluir no resumo (ex: --excluir *.env segredos.yaml src/local_*.py). "
+             "Soma-se aos padrões do arquivo .resumoignore na raiz do projeto, se existir.",
+    )
 
     args = parser.parse_args()
-    gerar_mapa_repositorio(args.gitignore_path, args.output_path, args.linhas_config)
+    gerar_mapa_repositorio(args.gitignore_path, args.output_path, args.linhas_config, args.excluir)
 
 # Como utilizar
-# python gerar_mapa.py <CAMINHO_DO_GITIGNORE> <CAMINHO_DO_MARKDOWN_DE_SAIDA> [--linhas-config N]
+# python gerar_mapa.py <CAMINHO_DO_GITIGNORE> <CAMINHO_DO_MARKDOWN_DE_SAIDA> [--linhas-config N] [--excluir PADRAO ...]
+
+# Para excluir arquivos do resumo:
+#   - Pontual (CLI):   python gerar_mapa.py ../Proj/.gitignore resumo.md --excluir *.env "src/segredo.py"
+#   - Persistente:     crie um .resumoignore na raiz do projeto (um padrão glob por linha; # vira comentário).
 
 # Exemplo prático:
 # python gerar_mapa.py ../MeuSuperProjeto/.gitignore ../MeuSuperProjeto/resumo_do_projeto.md
-# python .\gerar_mapa.py ..\VisualizadorPN\.gitignore .\test\resumo_do_projeto.md --linhas-config 10
+# python .\gerar_mapa.py ..\VisualizadorPN\.gitignore .\test\resumo_do_projeto.md --linhas-config 10 --excluir *.env
+# python .\gerar_mapa.py ..\VisualizadorPN\.gitignore .\test\resumo_do_projeto.md --linhas-config 10 --excluir README.md RELEASE_PROCESS.md AI_orientation.txt AUTHORS.md scripts/*
