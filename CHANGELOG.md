@@ -14,7 +14,8 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - No itens.
 
 ## [WorkingAt]
-- No itens.
+- Criar um jeito de substituir/apagar/adicionar apenas algumas linhas dando uma localização relativa que dependa de uma função/método/classe/arquivo.
+- Criar um main.py que a depender do argumento use o aplicador.py ou o extrator.py ou o gerar_mapa.py.
 
 ## [Unreleased]
 - No itens.

@@ -166,6 +166,7 @@ if __name__ == "__main__":
 
 # Como usar
 # python .\extrator.py .\test\resposta.json ..\VisualizadorPN .\test\codigo_para_ia.md
+# python .\extrator.py .\test\extrator_in.json ..\VisualizadorPN .\test\extrator_out.md
 #
 # Para gerar só o código, sem o guia de aplicação no fim:
 # python .\extrator.py .\test\resposta.json ..\VisualizadorPN .\test\codigo_para_ia.md --sem-instrucoes

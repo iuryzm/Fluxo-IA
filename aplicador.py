@@ -408,6 +408,7 @@ if __name__ == "__main__":
 # Como usar
 # 1) Ver o que mudaria (dry-run, não grava nada):
 #    python aplicador.py .\test\resposta.md ..\VisualizadorPN
+#    python .\aplicador.py .\test\aplicador_in.md ..\VisualizadorPN
 #
 # 2) Salvar um patch para revisar/aplicar com Git:
 #    python aplicador.py .\test\resposta.md ..\VisualizadorPN --diff .\test\mudancas.patch
@@ -416,6 +417,7 @@ if __name__ == "__main__":
 #
 # 3) Gravar direto nos arquivos (cria .bak por padrão):
 #    python aplicador.py .\test\resposta.md ..\VisualizadorPN --aplicar
+#    python .\aplicador.py .\test\aplicador_in.md ..\VisualizadorPN --aplicar
 #
 # 4) Ver as instruções para colar no chat com a IA:
 #    python aplicador.py --instrucoes
