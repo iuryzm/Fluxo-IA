@@ -175,11 +175,19 @@ def indexar_blocos_codigo(texto: str) -> dict:
 
         codigo_bruto = texto[inicio_codigo:fim_codigo]
 
-        # Limpa possíveis crases de fechamento de markdown (```) que
-        # possam existir ao final do último bloco de código.
-        # Usa regex com 1 crase avaliada para não quebrar a UI
-        codigo_limpo = re.sub(r'^`{3,}.*$', '', codigo_bruto, flags=re.MULTILINE).strip()
-        blocos[codigo_id] = codigo_limpo
+        # Remove eventuais crases de fechamento de markdown (```) do fim do bloco.
+        codigo_limpo = re.sub(r'^`{3,}.*$', '', codigo_bruto, flags=re.MULTILINE)
+
+        # Remove APENAS linhas em branco no começo/fim, preservando a indentação da
+        # primeira linha de conteúdo. Um .strip() aqui apagaria os espaços iniciais
+        # só da 1ª linha, desalinhando o bloco e fazendo o textwrap.dedent/_reindentar
+        # gerar indentação dupla quando a IA manda um trecho já indentado.
+        linhas_bloco = codigo_limpo.split("\n")
+        while linhas_bloco and not linhas_bloco[0].strip():
+            linhas_bloco.pop(0)
+        while linhas_bloco and not linhas_bloco[-1].strip():
+            linhas_bloco.pop()
+        blocos[codigo_id] = "\n".join(linhas_bloco)
 
     return blocos
 
@@ -562,7 +570,9 @@ def aplicar_em_arquivo(rel: str, alvo: Path, ops: list, blocos: dict) -> tuple:
                 try:
                     arvore = ast.parse(novo)
                 except SyntaxError as e:
-                    erros.append(f"[{rel}] não consegui parsear o estado atual do arquivo: {e}")
+                    erros.append(f"[{rel}] não consegui parsear o estado atual do arquivo: {e} "
+                                 "(ações por nó exigem Python válido — corrija a sintaxe e rode de novo, "
+                                 "ou use \"acao\": \"arquivo\").")
                     return original, original, erros
                 no = _encontrar_no(arvore, tipo, alvo_nome)
                 if no is None:

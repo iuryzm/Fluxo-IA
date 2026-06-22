@@ -19,7 +19,9 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - No itens.
 
 ## [Unreleased]
+- No itens.
 
+## [1.1.0] - 2026.06.22
 ### Adicionado
 - **`main.py` (ponto de entrada único)**: despachante com os subcomandos `mapear`,
   `extrair` e `aplicar`, que delegam para as funções `executar*` de cada módulo
@@ -47,12 +49,29 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
   temporário. Reaproveita o `_gerar_diff` que já existia.
 
 ### Alterado
+- **Renomeação do gerador de mapa**: `gerar_mapa.py` passou a se chamar
+  `mapear.py`, e o subcomando correspondente no `main.py` passou de `mapa` para
+  `mapear`.
 - **`INSTRUCOES_IA` (`aplicador.py`)**: guia estendido para documentar a nova
   ação `trecho` (âncoras, `posicao` e regras). Como o `extrator.py` importa essa
   constante, a mudança aparece automaticamente na saída da extração.
 - **CLI de `extrator.py` e `aplicador.py`**: o posicional `resposta_ia` passou a
   ser opcional quando se usa `--colar`, já que a resposta vem da área de
   transferência.
+
+### Corrigido
+- **Indentação dupla em blocos indentados (`indexar_blocos_codigo`)**: o
+  `.strip()` aplicado a cada bloco de código removia a indentação apenas da
+  **primeira** linha, desalinhando o trecho e fazendo o
+  `textwrap.dedent`/`_reindentar` indentarem em dobro quando a IA enviava um
+  código já indentado (ex.: um fragmento de dentro de um método). O resultado
+  falhava no guarda-corpo de sintaxe e bloqueava operações `trecho`,
+  `substituir` e `adicionar` legítimas. Agora a indentação da primeira linha é
+  preservada — removem-se apenas as linhas em branco nas pontas. (O guarda-corpo
+  nunca chegou a gravar arquivo inválido em disco; apenas recusava a aplicação.)
+- **Mensagem do guarda-corpo de parsing (`aplicador.py`)**: quando o arquivo-alvo
+  não é Python válido, o aviso agora orienta a corrigir a sintaxe e rodar de novo,
+  ou a usar `"acao": "arquivo"`.
 
 ## [1.0.2] - 2026.06.17
 
@@ -82,7 +101,7 @@ Primeira versão documentada do fluxo **Mapear · Extrair · Aplicar**.
 
 ### Adicionado
 
-#### `mapear.py`
+#### `gerar_mapa.py`
 - Geração de um mapa em Markdown da arquitetura do projeto a partir das linhas
   de negação (`!`) do `.gitignore`.
 - Análise via AST de arquivos `.py`: classes (com herança e docstring), funções
