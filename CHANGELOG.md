@@ -6,19 +6,53 @@ O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.
 e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 > ℹ️ **Nota:** as seções `[Unreleased]` e `[WorkingAt]` são lidas
-> automaticamente pelo `mapa.py` e incluídas no mapa enviado à IA. Use-as
+> automaticamente pelo `mapear.py` e incluídas no mapa enviado à IA. Use-as
 > para registrar o contexto do que está sendo desenvolvido agora — assim a IA
 > recebe esse status junto com a arquitetura do projeto.
 
 ## [Future]
-- No itens.
+- Estender a lógica de exclusão (`--excluir` / `.resumoignore`) ao `extrator.py`,
+  para que arquivos fora do mapa também não possam ser pedidos por caminho — hoje
+  só o `mapear.py` aplica os padrões.
 
 ## [WorkingAt]
-- Criar um jeito de substituir/apagar/adicionar apenas algumas linhas dando uma localização relativa que dependa de uma função/método/classe/arquivo.
-- Criar um main.py que a depender do argumento use o aplicador.py ou o extrator.py ou o mapa.py.
+- No itens.
 
 ## [Unreleased]
-- No itens.
+
+### Adicionado
+- **`main.py` (ponto de entrada único)**: despachante com os subcomandos `mapear`,
+  `extrair` e `aplicar`, que delegam para as funções `executar*` de cada módulo
+  sem duplicar lógica. Aceita os mesmos argumentos dos scripts originais.
+- **Ação `trecho` (edição por âncora) no `aplicador.py`**: substitui, insere ou
+  apaga **poucas linhas** dentro de um nó — ou de um arquivo, via
+  `"tipo": "arquivo"` — sem reescrever a função/classe inteira. A IA fornece uma
+  âncora (um trecho existente) e o código novo; o script procura a âncora
+  **apenas dentro do escopo do alvo** e exige casamento único (0 ou 2+
+  ocorrências não gravam nada). `posicao` controla o resultado: `substituir`
+  (com código vazio = apagar), `antes` ou `depois`. O casamento da âncora é
+  normalizado, ignorando indentação e espaços à direita.
+- **Integração com a área de transferência (`clipboard.py`)**: novo módulo de
+  dependência zero (PowerShell no Windows, `pbcopy`/`pbpaste` no macOS,
+  `wl-copy`/`xclip`/`xsel` no Linux, sempre em UTF-8). A flag `--copiar`
+  (`mapear.py` e `extrator.py`) joga a saída na área de transferência; a flag
+  `--colar` (`extrator.py` e `aplicador.py`) lê a resposta da IA de lá,
+  dispensando o arquivo `resposta_ia`. Fecha o ciclo com o chat sem salvar
+  arquivos intermediários. Degradação graciosa: sem utilitário de clipboard na
+  máquina, o `--copiar` apenas avisa e o trabalho não se perde.
+- **Visualizador de diff em HTML (`--html-diff`) no `aplicador.py`**: gera uma
+  página colorida no estilo GitHub (números de linha, contadores de `+`/`−`, modo
+  escuro automático e seção de avisos/erros) a partir do diff unificado e a abre
+  no navegador. Aceita um caminho para salvar o HTML; sem valor, usa um arquivo
+  temporário. Reaproveita o `_gerar_diff` que já existia.
+
+### Alterado
+- **`INSTRUCOES_IA` (`aplicador.py`)**: guia estendido para documentar a nova
+  ação `trecho` (âncoras, `posicao` e regras). Como o `extrator.py` importa essa
+  constante, a mudança aparece automaticamente na saída da extração.
+- **CLI de `extrator.py` e `aplicador.py`**: o posicional `resposta_ia` passou a
+  ser opcional quando se usa `--colar`, já que a resposta vem da área de
+  transferência.
 
 ## [1.0.2] - 2026.06.17
 
@@ -48,7 +82,7 @@ Primeira versão documentada do fluxo **Mapear · Extrair · Aplicar**.
 
 ### Adicionado
 
-#### `mapa.py`
+#### `mapear.py`
 - Geração de um mapa em Markdown da arquitetura do projeto a partir das linhas
   de negação (`!`) do `.gitignore`.
 - Análise via AST de arquivos `.py`: classes (com herança e docstring), funções

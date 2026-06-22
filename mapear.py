@@ -110,7 +110,7 @@ def processar_arquivo_py(caminho_arquivo: Path, caminho_base: Path) -> str:
 def _parece_binario(caminho_arquivo: Path) -> bool:
     """Heurística do Git: arquivo é binário se tem byte nulo ou não decodifica em UTF-8.
 
-    Evita despejar texto sem sentido (imagens, .pkl, .db, .ico, etc.) no mapa.
+    Evita despejar texto sem sentido (imagens, .pkl, .db, .ico, etc.) no mapear.
     """
     try:
         amostra = caminho_arquivo.read_bytes()[:65536]
@@ -146,7 +146,7 @@ def processar_arquivo_outro(caminho_arquivo: Path, caminho_base: Path, max_linha
     except Exception:
         tamanho_kb = 0.0
 
-    # Binários: lista só os metadados, sem despejar conteúdo ilegível no mapa.
+    # Binários: lista só os metadados, sem despejar conteúdo ilegível no mapear.
     if _parece_binario(caminho_arquivo):
         resumo += f"*(tipo: `{extensao}` · {tamanho_kb:.1f} KB · binário — conteúdo omitido)*\n"
         return resumo
@@ -286,17 +286,17 @@ def extrair_contexto_changelog(diretorio_projeto: Path) -> str:
     return resultado
 
 def _copiar_saida(conteudo: str):
-    """Copia o mapa para a área de transferência (se o clipboard estiver disponível)."""
+    """Copia o mapear para a área de transferência (se o clipboard estiver disponível)."""
     if clipboard is None:
         print("⚠️ clipboard.py não encontrado ao lado deste script; --copiar ignorado.")
         return
     try:
         clipboard.copiar(conteudo)
-        print("📋 Mapa copiado para a área de transferência (cole no chat da IA).")
+        print("📋 mapear copiado para a área de transferência (cole no chat da IA).")
     except clipboard.ClipboardIndisponivel as e:
         print(f"⚠️ Não consegui copiar para o clipboard: {e}")
 
-def mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, linhas_config: int = 20,
+def mapear_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, linhas_config: int = 20,
                            excluir: list = None, copiar: bool = False):
     print("\n🚀 --- INICIANDO PYRESUMIDOR --- 🚀")
     caminho_gitignore = Path(caminho_gitignore_str).resolve()
@@ -318,31 +318,31 @@ def mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, linhas_
 
     print(f"\n⚙️ Processando {len(arquivos_py)} arquivos .py e {len(arquivos_outros)} arquivos de config/outros...")
 
-    mapa_completo = ["# Resumo da Arquitetura do Projeto\n"]
-    mapa_completo.append("---\n")
+    mapear_completo = ["# Resumo da Arquitetura do Projeto\n"]
+    mapear_completo.append("---\n")
 
     # --- Seção 1: Arquivos Python ---
     for arquivo in arquivos_py:
         resumo_arquivo = processar_arquivo_py(arquivo, diretorio_projeto)
-        mapa_completo.append(resumo_arquivo)
-        mapa_completo.append("\n---\n")
+        mapear_completo.append(resumo_arquivo)
+        mapear_completo.append("\n---\n")
 
     # --- Seção 2: Arquivos de Configuração e Outros ---
     if arquivos_outros:
-        mapa_completo.append("\n# ⚙️ Arquivos de Configuração e Outros\n")
-        mapa_completo.append(
+        mapear_completo.append("\n# ⚙️ Arquivos de Configuração e Outros\n")
+        mapear_completo.append(
             "*Estes arquivos não são código Python e, portanto, não foram analisados por classe/função. "
             "Para vê-los, peça-os via `\"arquivos_completos\"`.*\n"
         )
-        mapa_completo.append("---\n")
+        mapear_completo.append("---\n")
         for arquivo in arquivos_outros:
             resumo_arquivo = processar_arquivo_outro(arquivo, diretorio_projeto, linhas_config)
-            mapa_completo.append(resumo_arquivo)
-            mapa_completo.append("\n---\n")
+            mapear_completo.append(resumo_arquivo)
+            mapear_completo.append("\n---\n")
 
     instrucoes_ia = (
         "# 🤖 INSTRUÇÕES ESTRITAS PARA A IA\n"
-        "Você está analisando a arquitetura de um projeto. Ao receber uma tarefa do usuário baseada neste mapa, "
+        "Você está analisando a arquitetura de um projeto. Ao receber uma tarefa do usuário baseada neste mapear, "
         "você deve informar quais arquivos, classes ou funções precisa visualizar o código-fonte para implementar a solução.\n\n"
         "Para que o script de extração automática do usuário funcione, você **DEVE** incluir em sua resposta um bloco "
         "de código contendo um objeto JSON estrito com o mapeamento do que você precisa.\n\n"
@@ -371,21 +371,21 @@ def mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, linhas_
         "`\"funcao\"` desses arquivos.\n"
     )
 
-    mapa_completo.append(instrucoes_ia)
+    mapear_completo.append(instrucoes_ia)
 
     # Verifica o CHANGELOG
     print("\n🔍 Analisando CHANGELOG...")
     contexto_changelog = extrair_contexto_changelog(diretorio_projeto)
     if contexto_changelog:
-        mapa_completo.append(contexto_changelog)
+        mapear_completo.append(contexto_changelog)
 
-    conteudo = "\n".join(mapa_completo)
+    conteudo = "\n".join(mapear_completo)
     arquivo_saida = Path(arquivo_saida_str).resolve()
     print(f"\n💾 Salvando resultado em: {arquivo_saida}")
 
     try:
         arquivo_saida.write_text(conteudo, encoding="utf-8")
-        print(f"✅ Mapa gerado com sucesso!")
+        print(f"✅ mapear gerado com sucesso!")
     except Exception as e:
         print(f"❌ Erro ao salvar o arquivo: {e}")
 
@@ -413,20 +413,20 @@ if __name__ == "__main__":
     parser.add_argument(
         "--copiar",
         action="store_true",
-        help="Também copia o mapa para a área de transferência, pronto para colar no chat da IA.",
+        help="Também copia o mapear para a área de transferência, pronto para colar no chat da IA.",
     )
 
     args = parser.parse_args()
-    mapa_repositorio(args.gitignore_path, args.output_path, args.linhas_config, args.excluir, args.copiar)
+    mapear_repositorio(args.gitignore_path, args.output_path, args.linhas_config, args.excluir, args.copiar)
 
 # Como utilizar
-# python mapa.py <CAMINHO_DO_GITIGNORE> <CAMINHO_DO_MARKDOWN_DE_SAIDA> [--linhas-config N] [--excluir PADRAO ...] [--copiar]
+# python mapear.py <CAMINHO_DO_GITIGNORE> <CAMINHO_DO_MARKDOWN_DE_SAIDA> [--linhas-config N] [--excluir PADRAO ...] [--copiar]
 
 # Para excluir arquivos do resumo:
-#   - Pontual (CLI):   python mapa.py ../Proj/.gitignore resumo.md --excluir *.env "src/segredo.py"
+#   - Pontual (CLI):   python mapear.py ../Proj/.gitignore resumo.md --excluir *.env "src/segredo.py"
 #   - Persistente:     crie um .resumoignore na raiz do projeto (um padrão glob por linha; # vira comentário).
 
 # Exemplo prático:
-# python mapa.py ../MeuSuperProjeto/.gitignore ../MeuSuperProjeto/resumo_do_projeto.md
-# python .\mapa.py ..\VisualizadorPN\.gitignore .\test\resumo_do_projeto.md --linhas-config 10 --excluir *.env
-# python .\mapa.py ..\VisualizadorPN\.gitignore .\test\resumo_do_projeto.md --linhas-config 10 --copiar
+# python mapear.py ../MeuSuperProjeto/.gitignore ../MeuSuperProjeto/resumo_do_projeto.md
+# python .\mapear.py ..\VisualizadorPN\.gitignore .\test\resumo_do_projeto.md --linhas-config 10 --excluir *.env
+# python .\mapear.py ..\VisualizadorPN\.gitignore .\test\resumo_do_projeto.md --linhas-config 10 --copiar

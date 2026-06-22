@@ -1,7 +1,7 @@
-"""Ponto de entrada único do toolkit: despacha para mapa / extrair / aplicar.
+"""Ponto de entrada único do toolkit: despacha para mapear / extrair / aplicar.
 
 Em vez de lembrar três comandos diferentes, use:
-    python main.py mapa     ...   (mapa.py)
+    python main.py mapear     ...   (mapear.py)
     python main.py extrair  ...   (extrator.py)
     python main.py aplicar  ...   (aplicador.py)
 
@@ -13,15 +13,15 @@ aqui.
 import argparse
 import sys
 
-import mapa
+import mapear
 import extrator
 import aplicador
 
 
-def _registrar_mapa(sub):
+def _registrar_mapear(sub):
     p = sub.add_parser(
-        "mapa",
-        help="Gera o mapa de arquitetura do projeto (mapa.py).",
+        "mapear",
+        help="Gera o mapear de arquitetura do projeto (mapear.py).",
         description="Gera um resumo do código Python baseado no .gitignore.",
     )
     p.add_argument("gitignore_path", help="Caminho para o .gitignore do projeto alvo.")
@@ -42,7 +42,7 @@ def _registrar_mapa(sub):
     p.add_argument(
         "--copiar",
         action="store_true",
-        help="Também copia o mapa para a área de transferência (pronto p/ colar no chat).",
+        help="Também copia o mapear para a área de transferência (pronto p/ colar no chat).",
     )
     return p
 
@@ -106,11 +106,11 @@ def _registrar_aplicar(sub):
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="main.py",
-        description="Toolkit de edição de código assistida por IA (pipeline mapa → extrair → aplicar).",
+        description="Toolkit de edição de código assistida por IA (pipeline mapear → extrair → aplicar).",
     )
-    sub = parser.add_subparsers(dest="comando", metavar="{mapa,extrair,aplicar}")
+    sub = parser.add_subparsers(dest="comando", metavar="{mapear,extrair,aplicar}")
 
-    _registrar_mapa(sub)
+    _registrar_mapear(sub)
     _registrar_extrair(sub)
     p_aplicar = _registrar_aplicar(sub)
 
@@ -120,8 +120,8 @@ def main(argv=None):
         parser.print_help()
         sys.exit(1)
 
-    if args.comando == "mapa":
-        mapa.mapa_repositorio(
+    if args.comando == "mapear":
+        mapear.mapear_repositorio(
             args.gitignore_path, args.output_path, args.linhas_config, args.excluir, args.copiar
         )
 
@@ -176,9 +176,11 @@ if __name__ == "__main__":
     main()
 
 # Como usar
-# python .\main.py mapa ..\VisualizadorPN\.gitignore .\test\mapa_out.md --linhas-config 10 --excluir README.md RELEASE_PROCESS.md AI_orientation.txt AUTHORS.md scripts/* 
+# python .\main.py mapear ..\VisualizadorPN\.gitignore .\test\mapear_out.md --linhas-config 10 --excluir README.md RELEASE_PROCESS.md AI_orientation.txt AUTHORS.md scripts/* 
+# python .\main.py extrair .\test\extrator_in.json ..\VisualizadorPN .\test\extrator_out.md
 # python .\main.py aplicar .\test\aplicador_in.md ..\VisualizadorPN --html-diff .\test\aplicador_out.html
-# python main.py mapa    ..\VisualizadorPN\.gitignore .\test\resumo.md --linhas-config 10 --excluir *.env
+# python .\main.py aplicar .\test\aplicador_in.md ..\VisualizadorPN --html-diff .\test\aplicador_out.html --aplicar
+# python main.py mapear    ..\VisualizadorPN\.gitignore .\test\resumo.md --linhas-config 10 --excluir *.env
 # python main.py extrair .\test\resposta.json ..\VisualizadorPN .\test\codigo_para_ia.md
 # python main.py aplicar .\test\resposta.md  ..\VisualizadorPN --aplicar
 # python main.py aplicar --instrucoes

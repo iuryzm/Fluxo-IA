@@ -11,7 +11,7 @@ Backends por plataforma:
   - Linux/BSD: wl-copy/wl-paste (Wayland), xclip ou xsel (X11) — o primeiro disponível.
 
 Em todos os casos o texto trafega como UTF-8, para não estropiar acentos e emojis
-(o mapa e as instruções usam ambos).
+(o mapear e as instruções usam ambos).
 """
 
 import sys

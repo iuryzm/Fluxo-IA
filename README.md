@@ -24,7 +24,7 @@ A IA nunca precisa lidar com posições de linha, indentação ou diffs.
 
 | Script | Papel | Entrada | Saída |
 |---|---|---|---|
-| `mapa.py` | Gera o mapa da arquitetura do projeto | `.gitignore` do projeto | `.md` (mapa + instruções p/ IA) |
+| `mapear.py` | Gera o mapear da arquitetura do projeto | `.gitignore` do projeto | `.md` (mapear + instruções p/ IA) |
 | `extrator.py` | Extrai os trechos de código que a IA pediu | resposta JSON da IA | `.md` (código-fonte solicitado) |
 | `aplicador.py` | Aplica as mudanças que a IA propôs | resposta da IA (plano + código) | arquivos editados / patch Git |
 
@@ -41,8 +41,8 @@ Não há nada para instalar. Basta ter os três `.py` numa pasta.
 ## O fluxo completo, passo a passo
 
 ```
-┌─────────────┐   mapa.md    ┌─────────┐  JSON do que   ┌────────────┐
-│ mapa  │ ───────────▶ │   VOCÊ  │ ── precisa ──▶ │ extrator   │
+┌─────────────┐   mapear.md    ┌─────────┐  JSON do que   ┌────────────┐
+│ mapear  │ ───────────▶ │   VOCÊ  │ ── precisa ──▶ │ extrator   │
 └─────────────┘              │  +  IA  │                └────────────┘
                              │  (chat) │                       │
 ┌─────────────┐  arquivos    │         │  código + plano       │ codigo_para_ia.md
@@ -50,14 +50,14 @@ Não há nada para instalar. Basta ter os três `.py` numa pasta.
 └─────────────┘              └─────────┘
 ```
 
-### 1. Gerar o mapa do projeto
+### 1. Gerar o mapear do projeto
 
 ```bash
-python mapa.py ../MeuProjeto/.gitignore ./test/mapa.md
+python mapear.py ../MeuProjeto/.gitignore ./test/mapear.md
 ```
 
-Cole o conteúdo de `mapa.md` no chat da IA **junto com a sua tarefa**
-("implemente X", "corrija o bug Y"...). O mapa já inclui, no fim, as instruções
+Cole o conteúdo de `mapear.md` no chat da IA **junto com a sua tarefa**
+("implemente X", "corrija o bug Y"...). O mapear já inclui, no fim, as instruções
 para a IA responder no formato certo.
 
 ### 2. Extrair o código que a IA pediu
@@ -92,10 +92,10 @@ python aplicador.py ./test/solucao.md ../MeuProjeto --aplicar
 
 ## Detalhes de cada script
 
-### `mapa.py`
+### `mapear.py`
 
 Lê o `.gitignore` do projeto-alvo e usa as linhas de **negação** (que começam
-com `!`) como a *lista de inclusão* do mapa. Ou seja: os arquivos que você
+com `!`) como a *lista de inclusão* do mapear. Ou seja: os arquivos que você
 "des-ignorou" no `.gitignore` são exatamente os que entram no resumo.
 
 Para cada arquivo `.py`, extrai via AST: classes (com herança e docstring),
@@ -117,7 +117,7 @@ Você também pode criar um arquivo `.resumoignore` na raiz do projeto (um padr�
 glob por linha, `#` para comentários) — ele soma com o `--excluir`.
 
 ```bash
-python mapa.py ../MeuProjeto/.gitignore ./test/mapa.md --linhas-config 10 --excluir *.env README.md "scripts/*"
+python mapear.py ../MeuProjeto/.gitignore ./test/mapear.md --linhas-config 10 --excluir *.env README.md "scripts/*"
 ```
 
 ### `extrator.py`
@@ -243,16 +243,16 @@ git apply ./test/mudancas.patch
   profundidade (`Classe.metodo`). Classes aninhadas e funções internas mais
   profundas não são alvos válidos.
 - O arquivo `.py` precisa estar sintaticamente válido para ser parseado pelo AST.
-- O mapa só inclui os arquivos casados pelas negações (`!`) do `.gitignore`.
+- O mapear só inclui os arquivos casados pelas negações (`!`) do `.gitignore`.
 
 ## Estrutura sugerida
 
 ```
 ferramentas/
-├── mapa.py
+├── mapear.py
 ├── extrator.py
 ├── aplicador.py
 ├── README.md
 ├── CHANGELOG.md
-└── test/            # arquivos intermediários (mapa, respostas, patches)
+└── test/            # arquivos intermediários (mapear, respostas, patches)
 ```
