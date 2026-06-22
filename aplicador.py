@@ -8,6 +8,9 @@ import shutil
 from pathlib import Path
 from collections import defaultdict
 import sys
+import html
+import tempfile
+import webbrowser
 
 # Variáveis auxiliares para evitar que o renderizador de Markdown do chat
 # quebre este arquivo em vários blocos de código quando copiado.
@@ -340,6 +343,165 @@ def _gerar_diff(rel: str, original: str, novo: str) -> str:
     return f"diff --git a/{rel} b/{rel}\n" + corpo
 
 
+def _contar_mudancas(diff_text: str) -> tuple:
+    """Conta linhas adicionadas/removidas num diff unificado (ignora +++/---)."""
+    add = dels = 0
+    for ln in diff_text.splitlines():
+        if ln.startswith("+") and not ln.startswith("+++"):
+            add += 1
+        elif ln.startswith("-") and not ln.startswith("---"):
+            dels += 1
+    return add, dels
+
+
+_RE_HUNK = re.compile(r'^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$')
+
+
+def _parsear_diff(diff_text: str) -> list:
+    """Transforma um diff unificado em linhas estruturadas para render HTML.
+
+    Cada item é uma tupla (tipo, linha_antiga, linha_nova, texto), com tipo em
+    {'hunk', 'add', 'del', 'ctx', 'meta'}. Os números de linha saem do cabeçalho
+    de cada hunk (@@ -a,b +c,d @@), então não dependem de contar nada à mão.
+    """
+    linhas = []
+    old_ln = new_ln = 0
+    for ln in diff_text.splitlines():
+        if ln.startswith("diff --git") or ln.startswith("--- ") or ln.startswith("+++ "):
+            continue
+        m = _RE_HUNK.match(ln)
+        if m:
+            old_ln, new_ln = int(m.group(1)), int(m.group(2))
+            linhas.append(("hunk", None, None, ln))
+        elif ln.startswith("+"):
+            linhas.append(("add", None, new_ln, ln[1:]))
+            new_ln += 1
+        elif ln.startswith("-"):
+            linhas.append(("del", old_ln, None, ln[1:]))
+            old_ln += 1
+        elif ln.startswith("\\"):  # "\ No newline at end of file"
+            linhas.append(("meta", None, None, ln))
+        else:  # contexto (começa com espaço)
+            texto = ln[1:] if ln.startswith(" ") else ln
+            linhas.append(("ctx", old_ln, new_ln, texto))
+            old_ln += 1
+            new_ln += 1
+    return linhas
+
+
+_HTML_CSS = """
+:root{
+  --bg:#f6f8fa;--card:#fff;--border:#d0d7de;--text:#1f2328;--muted:#656d76;
+  --add-bg:#e6ffec;--add-ln:#ccffd8;--del-bg:#ffebe9;--del-ln:#ffd7d5;
+  --hunk-bg:#ddf4ff;--gutter:#fff;--sign-add:#1a7f37;--sign-del:#cf222e;--accent:#0969da;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0d1117;--card:#0d1117;--border:#30363d;--text:#e6edf3;--muted:#8b949e;
+    --add-bg:#12261e;--add-ln:#1b4721;--del-bg:#25171c;--del-ln:#542426;
+    --hunk-bg:#121d2f;--gutter:#0d1117;--sign-add:#3fb950;--sign-del:#f85149;--accent:#58a6ff;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1000px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.modo{font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px}
+.modo.dryrun{background:var(--hunk-bg);color:var(--accent)}
+.modo.aplicado{background:var(--add-bg);color:var(--sign-add)}
+.resumo{color:var(--muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.badge{font:600 12px ui-monospace,SFMono-Regular,Menlo,monospace;padding:1px 7px;border-radius:6px}
+.badge.add{background:var(--add-bg);color:var(--sign-add)}
+.badge.del{background:var(--del-bg);color:var(--sign-del)}
+.muted{color:var(--muted);font-weight:400}
+.arquivo{border:1px solid var(--border);border-radius:8px;overflow:hidden;margin:16px 0;background:var(--card)}
+.arq-head{display:flex;justify-content:space-between;align-items:center;gap:8px;
+  padding:8px 14px;background:var(--bg);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:1}
+.arq-nome{font:600 13px ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
+.badges{display:flex;gap:6px;flex:none}
+table.diff{width:100%;border-collapse:collapse;
+  font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+table.diff td{padding:0 8px;vertical-align:top;white-space:pre-wrap;word-break:break-word}
+td.ln{width:1%;min-width:42px;text-align:right;color:var(--muted);
+  user-select:none;background:var(--gutter);border-right:1px solid var(--border)}
+td.sign{width:1%;text-align:center;user-select:none;padding:0 4px}
+td.code{width:100%}
+tr.add td.code,tr.add td.sign{background:var(--add-bg)}
+tr.add td.ln{background:var(--add-ln)}
+tr.add td.sign{color:var(--sign-add)}
+tr.del td.code,tr.del td.sign{background:var(--del-bg)}
+tr.del td.ln{background:var(--del-ln)}
+tr.del td.sign{color:var(--sign-del)}
+tr.hunk td{background:var(--hunk-bg);color:var(--muted);padding:4px 8px}
+tr.meta td{color:var(--muted);font-style:italic}
+.avisos{border:1px solid var(--del-bg);background:var(--del-bg);border-radius:8px;padding:4px 16px;margin:16px 0}
+.avisos h2{font-size:14px;color:var(--sign-del)}
+.vazio{color:var(--muted)}
+"""
+
+
+def _gerar_html_diff(diffs_arquivos: list, projeto_path: Path, aplicado: bool, erros: list) -> str:
+    """Monta uma página HTML (zero-dependência) com os diffs coloridos."""
+    total_add = total_del = 0
+    blocos = []
+
+    for rel, diff in diffs_arquivos:
+        add, dels = _contar_mudancas(diff)
+        total_add += add
+        total_del += dels
+
+        linhas_html = []
+        for tipo, o, n, texto in _parsear_diff(diff):
+            if tipo in ("hunk", "meta"):
+                linhas_html.append(
+                    f'<tr class="{tipo}"><td class="ln"></td><td class="ln"></td>'
+                    f'<td class="sign"></td><td class="code">{html.escape(texto)}</td></tr>'
+                )
+                continue
+            sign = {"add": "+", "del": "\u2212", "ctx": ""}[tipo]
+            o_s = "" if o is None else str(o)
+            n_s = "" if n is None else str(n)
+            texto_esc = html.escape(texto) if texto else "&nbsp;"
+            linhas_html.append(
+                f'<tr class="{tipo}"><td class="ln">{o_s}</td><td class="ln">{n_s}</td>'
+                f'<td class="sign">{sign}</td><td class="code">{texto_esc}</td></tr>'
+            )
+
+        blocos.append(
+            '<section class="arquivo">'
+            f'<header class="arq-head"><span class="arq-nome">{html.escape(rel)}</span>'
+            f'<span class="badges"><span class="badge add">+{add}</span>'
+            f'<span class="badge del">\u2212{dels}</span></span></header>'
+            f'<table class="diff">{"".join(linhas_html)}</table>'
+            '</section>'
+        )
+
+    modo = "Alterações aplicadas" if aplicado else "Pré-visualização (dry-run — nada gravado)"
+    modo_cls = "aplicado" if aplicado else "dryrun"
+
+    erros_html = ""
+    if erros:
+        itens = "".join(f"<li>{html.escape(e)}</li>" for e in erros)
+        erros_html = f'<section class="avisos"><h2>Avisos / erros</h2><ul>{itens}</ul></section>'
+
+    corpo = "".join(blocos) if blocos else '<p class="vazio">Nenhuma mudança gerada.</p>'
+
+    return (
+        "<!DOCTYPE html>\n"
+        '<html lang="pt-br"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        "<title>aplicador · diff</title>"
+        f"<style>{_HTML_CSS}</style></head><body><div class=\"wrap\">"
+        f'<h1>aplicador <span class="modo {modo_cls}">{modo}</span></h1>'
+        f'<p class="resumo"><span class="badge add">+{total_add}</span>'
+        f'<span class="badge del">\u2212{total_del}</span>'
+        f'<span class="muted">· {len(diffs_arquivos)} arquivo(s) · {html.escape(str(projeto_path))}</span></p>'
+        f"{erros_html}{corpo}"
+        "</div></body></html>"
+    )
+
+
 def aplicar_em_arquivo(rel: str, alvo: Path, ops: list, blocos: dict) -> tuple:
     """Aplica (em memória) todas as operações de um arquivo.
 
@@ -468,7 +630,7 @@ def aplicar_em_arquivo(rel: str, alvo: Path, ops: list, blocos: dict) -> tuple:
 
 
 def executar(resposta_path_str: str, projeto_path_str: str,
-             aplicar: bool, diff_path_str: str, sem_backup: bool):
+             aplicar: bool, diff_path_str: str, sem_backup: bool, html_diff=None):
     resposta_path = Path(resposta_path_str).resolve()
     projeto_path = Path(projeto_path_str).resolve()
 
@@ -498,6 +660,7 @@ def executar(resposta_path_str: str, projeto_path_str: str,
         por_arquivo[rel].append(op)
 
     todos_diffs = []
+    diffs_arquivos = []  # (rel, diff) para o render HTML
     total_erros = []
 
     for rel, ops in por_arquivo.items():
@@ -508,6 +671,7 @@ def executar(resposta_path_str: str, projeto_path_str: str,
         diff = _gerar_diff(rel, original, novo)
         if diff:
             todos_diffs.append(diff)
+            diffs_arquivos.append((rel, diff))
             print(f"📝 {rel}")
             print(diff)
             if aplicar:
@@ -533,6 +697,28 @@ def executar(resposta_path_str: str, projeto_path_str: str,
         for e in total_erros:
             print(f"   - {e}")
 
+    if html_diff is not None:
+        if diffs_arquivos or total_erros:
+            pagina = _gerar_html_diff(diffs_arquivos, projeto_path, aplicar, total_erros)
+            if html_diff:  # caminho explícito informado pelo usuário
+                destino = Path(html_diff).resolve()
+                destino.parent.mkdir(parents=True, exist_ok=True)
+            else:          # sem valor: usa um arquivo temporário
+                tmp = tempfile.NamedTemporaryFile(prefix="aplicador_diff_", suffix=".html", delete=False)
+                tmp.close()
+                destino = Path(tmp.name)
+            destino.write_text(pagina, encoding="utf-8")
+            print(f"\n🌐 Diff em HTML salvo em: {destino}")
+            try:
+                if webbrowser.open(destino.as_uri()):
+                    print("   Abrindo no navegador...")
+                else:
+                    print("   (não consegui abrir um navegador; abra o arquivo acima manualmente.)")
+            except Exception:
+                print("   (não consegui abrir um navegador; abra o arquivo acima manualmente.)")
+        else:
+            print("\n🌐 --html-diff: nada para mostrar (nenhuma mudança gerada).")
+
     if not aplicar and todos_diffs:
         print("\nℹ️ Isto foi um dry-run. Use --aplicar para gravar, ou --diff arquivo.patch para salvar o patch.")
 
@@ -546,6 +732,15 @@ if __name__ == "__main__":
     parser.add_argument("--aplicar", action="store_true", help="Grava as alterações nos arquivos (default: dry-run).")
     parser.add_argument("--diff", dest="diff_path", default=None, help="Salva o patch unificado combinado neste caminho.")
     parser.add_argument("--sem-backup", action="store_true", help="Não cria arquivos .bak ao gravar.")
+    parser.add_argument(
+        "--html-diff",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="ARQUIVO.html",
+        help="Gera uma página HTML com os diffs coloridos e abre no navegador. "
+             "Informe um caminho para salvar o HTML; sem valor, usa um arquivo temporário.",
+    )
     parser.add_argument("--instrucoes", action="store_true", help="Imprime as instruções para colar no chat com a IA e sai.")
 
     args = parser.parse_args()
@@ -557,7 +752,7 @@ if __name__ == "__main__":
     if not args.resposta_ia or not args.diretorio_projeto:
         parser.error("são necessários 'resposta_ia' e 'diretorio_projeto' (ou use --instrucoes).")
 
-    executar(args.resposta_ia, args.diretorio_projeto, args.aplicar, args.diff_path, args.sem_backup)
+    executar(args.resposta_ia, args.diretorio_projeto, args.aplicar, args.diff_path, args.sem_backup, args.html_diff)
 
 # Como usar
 # 1) Ver o que mudaria (dry-run, não grava nada):

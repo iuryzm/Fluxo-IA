@@ -70,6 +70,15 @@ def _registrar_aplicar(sub):
     p.add_argument("--aplicar", action="store_true", help="Grava as alterações (default: dry-run).")
     p.add_argument("--diff", dest="diff_path", default=None, help="Salva o patch unificado combinado neste caminho.")
     p.add_argument("--sem-backup", action="store_true", help="Não cria arquivos .bak ao gravar.")
+    p.add_argument(
+        "--html-diff",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="ARQUIVO.html",
+        help="Gera uma página HTML com os diffs coloridos e abre no navegador "
+             "(sem valor = arquivo temporário).",
+    )
     p.add_argument("--instrucoes", action="store_true", help="Imprime as instruções para colar no chat com a IA e sai.")
     return p
 
@@ -116,6 +125,7 @@ def main(argv=None):
             args.aplicar,
             args.diff_path,
             args.sem_backup,
+            args.html_diff,
         )
 
 
@@ -126,4 +136,5 @@ if __name__ == "__main__":
 # python main.py mapa    ..\VisualizadorPN\.gitignore .\test\resumo.md --linhas-config 10 --excluir *.env
 # python main.py extrair .\test\resposta.json ..\VisualizadorPN .\test\codigo_para_ia.md
 # python main.py aplicar .\test\resposta.md  ..\VisualizadorPN --aplicar
+# python .\main.py aplicar .\test\aplicador_in.md ..\VisualizadorPN --html-diff .\test\aplicador_out.html
 # python main.py aplicar --instrucoes
