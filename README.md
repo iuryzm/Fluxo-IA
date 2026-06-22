@@ -24,7 +24,7 @@ A IA nunca precisa lidar com posições de linha, indentação ou diffs.
 
 | Script | Papel | Entrada | Saída |
 |---|---|---|---|
-| `gerar_mapa.py` | Gera o mapa da arquitetura do projeto | `.gitignore` do projeto | `.md` (mapa + instruções p/ IA) |
+| `mapa.py` | Gera o mapa da arquitetura do projeto | `.gitignore` do projeto | `.md` (mapa + instruções p/ IA) |
 | `extrator.py` | Extrai os trechos de código que a IA pediu | resposta JSON da IA | `.md` (código-fonte solicitado) |
 | `aplicador.py` | Aplica as mudanças que a IA propôs | resposta da IA (plano + código) | arquivos editados / patch Git |
 
@@ -42,7 +42,7 @@ Não há nada para instalar. Basta ter os três `.py` numa pasta.
 
 ```
 ┌─────────────┐   mapa.md    ┌─────────┐  JSON do que   ┌────────────┐
-│ gerar_mapa  │ ───────────▶ │   VOCÊ  │ ── precisa ──▶ │ extrator   │
+│ mapa  │ ───────────▶ │   VOCÊ  │ ── precisa ──▶ │ extrator   │
 └─────────────┘              │  +  IA  │                └────────────┘
                              │  (chat) │                       │
 ┌─────────────┐  arquivos    │         │  código + plano       │ codigo_para_ia.md
@@ -53,7 +53,7 @@ Não há nada para instalar. Basta ter os três `.py` numa pasta.
 ### 1. Gerar o mapa do projeto
 
 ```bash
-python gerar_mapa.py ../MeuProjeto/.gitignore ./test/mapa.md
+python mapa.py ../MeuProjeto/.gitignore ./test/mapa.md
 ```
 
 Cole o conteúdo de `mapa.md` no chat da IA **junto com a sua tarefa**
@@ -92,7 +92,7 @@ python aplicador.py ./test/solucao.md ../MeuProjeto --aplicar
 
 ## Detalhes de cada script
 
-### `gerar_mapa.py`
+### `mapa.py`
 
 Lê o `.gitignore` do projeto-alvo e usa as linhas de **negação** (que começam
 com `!`) como a *lista de inclusão* do mapa. Ou seja: os arquivos que você
@@ -117,7 +117,7 @@ Você também pode criar um arquivo `.resumoignore` na raiz do projeto (um padr�
 glob por linha, `#` para comentários) — ele soma com o `--excluir`.
 
 ```bash
-python gerar_mapa.py ../MeuProjeto/.gitignore ./test/mapa.md --linhas-config 10 --excluir *.env README.md "scripts/*"
+python mapa.py ../MeuProjeto/.gitignore ./test/mapa.md --linhas-config 10 --excluir *.env README.md "scripts/*"
 ```
 
 ### `extrator.py`
@@ -249,7 +249,7 @@ git apply ./test/mudancas.patch
 
 ```
 ferramentas/
-├── gerar_mapa.py
+├── mapa.py
 ├── extrator.py
 ├── aplicador.py
 ├── README.md

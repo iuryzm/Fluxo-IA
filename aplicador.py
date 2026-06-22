@@ -12,6 +12,14 @@ import html
 import tempfile
 import webbrowser
 
+# Permite importar o clipboard.py que fica ao lado deste script. Opcional: sem ele,
+# --colar simplesmente avisa que não está disponível.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    import clipboard
+except ImportError:
+    clipboard = None
+
 # Variáveis auxiliares para evitar que o renderizador de Markdown do chat
 # quebre este arquivo em vários blocos de código quando copiado.
 B3 = "`" * 3
@@ -630,15 +638,25 @@ def aplicar_em_arquivo(rel: str, alvo: Path, ops: list, blocos: dict) -> tuple:
 
 
 def executar(resposta_path_str: str, projeto_path_str: str,
-             aplicar: bool, diff_path_str: str, sem_backup: bool, html_diff=None):
-    resposta_path = Path(resposta_path_str).resolve()
+             aplicar: bool, diff_path_str: str, sem_backup: bool, html_diff=None, colar=False):
     projeto_path = Path(projeto_path_str).resolve()
 
-    if not resposta_path.exists():
-        print(f"❌ Arquivo com a resposta da IA não encontrado: {resposta_path}")
-        sys.exit(1)
-
-    texto = resposta_path.read_text(encoding="utf-8", errors="replace")
+    if colar:
+        if clipboard is None:
+            print("❌ clipboard.py não encontrado ao lado deste script; não dá para usar --colar.")
+            sys.exit(1)
+        try:
+            texto = clipboard.colar()
+        except clipboard.ClipboardIndisponivel as e:
+            print(f"❌ Não consegui ler a área de transferência: {e}")
+            sys.exit(1)
+        print("📋 Lendo a resposta da IA da área de transferência...")
+    else:
+        resposta_path = Path(resposta_path_str).resolve()
+        if not resposta_path.exists():
+            print(f"❌ Arquivo com a resposta da IA não encontrado: {resposta_path}")
+            sys.exit(1)
+        texto = resposta_path.read_text(encoding="utf-8", errors="replace")
     plano = carregar_plano(texto)
     blocos = indexar_blocos_codigo(texto)
     operacoes = plano.get("operacoes", [])
@@ -733,6 +751,12 @@ if __name__ == "__main__":
     parser.add_argument("--diff", dest="diff_path", default=None, help="Salva o patch unificado combinado neste caminho.")
     parser.add_argument("--sem-backup", action="store_true", help="Não cria arquivos .bak ao gravar.")
     parser.add_argument(
+        "--colar",
+        action="store_true",
+        help="Lê a resposta da IA da área de transferência em vez de um arquivo "
+             "(assim você não passa 'resposta_ia').",
+    )
+    parser.add_argument(
         "--html-diff",
         nargs="?",
         const="",
@@ -749,10 +773,21 @@ if __name__ == "__main__":
         print(INSTRUCOES_IA)
         sys.exit(0)
 
-    if not args.resposta_ia or not args.diretorio_projeto:
-        parser.error("são necessários 'resposta_ia' e 'diretorio_projeto' (ou use --instrucoes).")
+    # Reorganiza os posicionais conforme --colar (com --colar não se passa resposta_ia).
+    posicionais = [p for p in (args.resposta_ia, args.diretorio_projeto) if p is not None]
+    if args.colar:
+        if len(posicionais) != 1:
+            parser.error("com --colar, informe apenas: diretorio_projeto.")
+        args.resposta_ia = None
+        args.diretorio_projeto = posicionais[0]
+    else:
+        if len(posicionais) != 2:
+            parser.error("informe 'resposta_ia' e 'diretorio_projeto' "
+                         "(ou use --colar passando só o diretório, ou --instrucoes).")
+        args.resposta_ia, args.diretorio_projeto = posicionais
 
-    executar(args.resposta_ia, args.diretorio_projeto, args.aplicar, args.diff_path, args.sem_backup, args.html_diff)
+    executar(args.resposta_ia, args.diretorio_projeto, args.aplicar, args.diff_path,
+             args.sem_backup, args.html_diff, args.colar)
 
 # Como usar
 # 1) Ver o que mudaria (dry-run, não grava nada):

@@ -3,9 +3,10 @@
 !.gitignore
 !CHANGELOG.md
 !LICENSE
-!LICENSE.md
 !README.md
 !aplicador.py
+!clipboard.py
 !extrator.py
 !gerar_mapa.py
 !main.py
+!mapa.py

@@ -6,7 +6,7 @@ O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.
 e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 > ℹ️ **Nota:** as seções `[Unreleased]` e `[WorkingAt]` são lidas
-> automaticamente pelo `gerar_mapa.py` e incluídas no mapa enviado à IA. Use-as
+> automaticamente pelo `mapa.py` e incluídas no mapa enviado à IA. Use-as
 > para registrar o contexto do que está sendo desenvolvido agora — assim a IA
 > recebe esse status junto com a arquitetura do projeto.
 
@@ -15,7 +15,7 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 ## [WorkingAt]
 - Criar um jeito de substituir/apagar/adicionar apenas algumas linhas dando uma localização relativa que dependa de uma função/método/classe/arquivo.
-- Criar um main.py que a depender do argumento use o aplicador.py ou o extrator.py ou o gerar_mapa.py.
+- Criar um main.py que a depender do argumento use o aplicador.py ou o extrator.py ou o mapa.py.
 
 ## [Unreleased]
 - No itens.
@@ -48,7 +48,7 @@ Primeira versão documentada do fluxo **Mapear · Extrair · Aplicar**.
 
 ### Adicionado
 
-#### `gerar_mapa.py`
+#### `mapa.py`
 - Geração de um mapa em Markdown da arquitetura do projeto a partir das linhas
   de negação (`!`) do `.gitignore`.
 - Análise via AST de arquivos `.py`: classes (com herança e docstring), funções

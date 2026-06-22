@@ -4,6 +4,14 @@ import fnmatch
 from pathlib import Path
 import sys
 
+# Permite importar o clipboard.py que fica ao lado deste script, independente de
+# onde o comando foi rodado. A importação é opcional: sem ele, --copiar só avisa.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    import clipboard
+except ImportError:
+    clipboard = None
+
 class AnalisadorAST(ast.NodeVisitor):
     def __init__(self):
         self.resultado = []
@@ -277,7 +285,19 @@ def extrair_contexto_changelog(diretorio_projeto: Path) -> str:
     resultado += "\n".join(trecho_extraido) + "\n"
     return resultado
 
-def gerar_mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, linhas_config: int = 20, excluir: list = None):
+def _copiar_saida(conteudo: str):
+    """Copia o mapa para a área de transferência (se o clipboard estiver disponível)."""
+    if clipboard is None:
+        print("⚠️ clipboard.py não encontrado ao lado deste script; --copiar ignorado.")
+        return
+    try:
+        clipboard.copiar(conteudo)
+        print("📋 Mapa copiado para a área de transferência (cole no chat da IA).")
+    except clipboard.ClipboardIndisponivel as e:
+        print(f"⚠️ Não consegui copiar para o clipboard: {e}")
+
+def mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, linhas_config: int = 20,
+                           excluir: list = None, copiar: bool = False):
     print("\n🚀 --- INICIANDO PYRESUMIDOR --- 🚀")
     caminho_gitignore = Path(caminho_gitignore_str).resolve()
     diretorio_projeto = caminho_gitignore.parent
@@ -359,14 +379,18 @@ def gerar_mapa_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, l
     if contexto_changelog:
         mapa_completo.append(contexto_changelog)
 
+    conteudo = "\n".join(mapa_completo)
     arquivo_saida = Path(arquivo_saida_str).resolve()
     print(f"\n💾 Salvando resultado em: {arquivo_saida}")
 
     try:
-        arquivo_saida.write_text("\n".join(mapa_completo), encoding="utf-8")
+        arquivo_saida.write_text(conteudo, encoding="utf-8")
         print(f"✅ Mapa gerado com sucesso!")
     except Exception as e:
         print(f"❌ Erro ao salvar o arquivo: {e}")
+
+    if copiar:
+        _copiar_saida(conteudo)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Gera um resumo do código Python baseado no .gitignore.")
@@ -386,18 +410,23 @@ if __name__ == "__main__":
         help="Padrões glob de arquivos a NÃO incluir no resumo (ex: --excluir *.env segredos.yaml src/local_*.py). "
              "Soma-se aos padrões do arquivo .resumoignore na raiz do projeto, se existir.",
     )
+    parser.add_argument(
+        "--copiar",
+        action="store_true",
+        help="Também copia o mapa para a área de transferência, pronto para colar no chat da IA.",
+    )
 
     args = parser.parse_args()
-    gerar_mapa_repositorio(args.gitignore_path, args.output_path, args.linhas_config, args.excluir)
+    mapa_repositorio(args.gitignore_path, args.output_path, args.linhas_config, args.excluir, args.copiar)
 
 # Como utilizar
-# python gerar_mapa.py <CAMINHO_DO_GITIGNORE> <CAMINHO_DO_MARKDOWN_DE_SAIDA> [--linhas-config N] [--excluir PADRAO ...]
+# python mapa.py <CAMINHO_DO_GITIGNORE> <CAMINHO_DO_MARKDOWN_DE_SAIDA> [--linhas-config N] [--excluir PADRAO ...] [--copiar]
 
 # Para excluir arquivos do resumo:
-#   - Pontual (CLI):   python gerar_mapa.py ../Proj/.gitignore resumo.md --excluir *.env "src/segredo.py"
+#   - Pontual (CLI):   python mapa.py ../Proj/.gitignore resumo.md --excluir *.env "src/segredo.py"
 #   - Persistente:     crie um .resumoignore na raiz do projeto (um padrão glob por linha; # vira comentário).
 
 # Exemplo prático:
-# python gerar_mapa.py ../MeuSuperProjeto/.gitignore ../MeuSuperProjeto/resumo_do_projeto.md
-# python .\gerar_mapa.py ..\VisualizadorPN\.gitignore .\test\resumo_do_projeto.md --linhas-config 10 --excluir *.env
-# python .\gerar_mapa.py ..\VisualizadorPN\.gitignore .\test\resumo_do_projeto.md --linhas-config 10 --excluir README.md RELEASE_PROCESS.md AI_orientation.txt AUTHORS.md scripts/*
+# python mapa.py ../MeuSuperProjeto/.gitignore ../MeuSuperProjeto/resumo_do_projeto.md
+# python .\mapa.py ..\VisualizadorPN\.gitignore .\test\resumo_do_projeto.md --linhas-config 10 --excluir *.env
+# python .\mapa.py ..\VisualizadorPN\.gitignore .\test\resumo_do_projeto.md --linhas-config 10 --copiar
