@@ -25,10 +25,11 @@ except ImportError:
 class ExtratorAST(ast.NodeVisitor):
     def __init__(self, source_code, alvos_classes, alvos_funcoes):
         self.source_code = source_code
+        self.linhas_fonte = source_code.splitlines()
         self.alvos_classes = set(alvos_classes)
-        # Separa alvos por nome simples (função de módulo ou nome solto) dos
-        # alvos em notação "Classe.metodo". O método pontilhado exige casar o
-        # nome DENTRO da classe certa — não basta o nome bater em qualquer lugar.
+        # Separa alvos por nome simples (função de módulo / nome solto) dos alvos
+        # em notação "Classe.metodo", que exigem casar o método dentro da classe
+        # certa — não basta o nome do método bater em qualquer lugar.
         self.alvos_funcoes = set()
         self.alvos_metodos = {}  # nome_da_classe -> {nomes_de_metodos}
         for alvo in alvos_funcoes:
@@ -40,16 +41,33 @@ class ExtratorAST(ast.NodeVisitor):
         self.codigo_extraido = []
         self._pilha_classes = []  # rastreia a classe que está sendo visitada
 
+    def _fonte_do_no(self, no):
+        """Código-fonte do nó INCLUINDO os decoradores, com a indentação do nível
+        do nó removida (dedent) para leitura limpa.
+
+        Diferente de ast.get_source_segment, que começa na linha do `def`/`class`
+        e descarta os decoradores — informação que a IA precisa ver (ex.: @Slot,
+        @property) para depois devolver a definição completa.
+        """
+        if getattr(no, "decorator_list", None):
+            inicio = no.decorator_list[0].lineno  # 1-based
+        else:
+            inicio = no.lineno
+        bloco = self.linhas_fonte[inicio - 1:no.end_lineno]
+        # Remove a indentação comum (mínima entre as linhas não vazias).
+        recuos = [len(l) - len(l.lstrip()) for l in bloco if l.strip()]
+        corte = min(recuos) if recuos else 0
+        return "\n".join(l[corte:] if l.strip() else "" for l in bloco)
+
     def visit_ClassDef(self, no):
         if no.name in self.alvos_classes:
             # Captura o código exato da classe inteira.
-            codigo = ast.get_source_segment(self.source_code, no)
-            self.codigo_extraido.append((no.name, "Classe", codigo))
+            self.codigo_extraido.append((no.name, "Classe", self._fonte_do_no(no)))
             # Se a classe inteira foi pedida, não duplicamos seus métodos.
             self.alvos_metodos.pop(no.name, None)
-        # Empilha o nome para que os métodos no corpo saibam a que classe
-        # pertencem; segue visitando para achar métodos pedidos via
-        # "Classe.metodo" mesmo quando a classe inteira NÃO foi pedida.
+        # Empilha o nome para que os métodos do corpo saibam a que classe
+        # pertencem; segue visitando para achar métodos pedidos via "Classe.metodo"
+        # mesmo quando a classe inteira NÃO foi pedida.
         self._pilha_classes.append(no.name)
         self.generic_visit(no)
         self._pilha_classes.pop()
@@ -58,8 +76,7 @@ class ExtratorAST(ast.NodeVisitor):
         capturado = False
         # 1) Função/método pedido pelo nome simples (nível de módulo ou solto).
         if no.name in self.alvos_funcoes:
-            codigo = ast.get_source_segment(self.source_code, no)
-            self.codigo_extraido.append((no.name, "Função/Método", codigo))
+            self.codigo_extraido.append((no.name, "Função/Método", self._fonte_do_no(no)))
             capturado = True
         # 2) Método pedido como "Classe.metodo": só casa se estiver diretamente
         #    dentro da classe nomeada (a classe mais interna atual na pilha).
@@ -67,9 +84,8 @@ class ExtratorAST(ast.NodeVisitor):
             classe_atual = self._pilha_classes[-1]
             metodos = self.alvos_metodos.get(classe_atual)
             if metodos and no.name in metodos:
-                codigo = ast.get_source_segment(self.source_code, no)
                 nome_completo = f"{classe_atual}.{no.name}"
-                self.codigo_extraido.append((nome_completo, "Método", codigo))
+                self.codigo_extraido.append((nome_completo, "Método", self._fonte_do_no(no)))
         self.generic_visit(no)
 
     # Métodos/funções assíncronos (async def) usam a mesma lógica de casamento.

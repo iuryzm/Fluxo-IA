@@ -16,53 +16,29 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
   só o `mapear.py` aplica os padrões.
 
 ## [WorkingAt]
-- Corrigir o problema:
-  ````bash
-  python .\main.py extrair .\test\extrator_in.json ..\VisualizadorPN .\test\extrator_out.md                        
-  🔍 Lendo as requisições da IA...
-  ✅ Extração concluída! Arquivo gerado em: .\test\extrator_out.md (com instruções do aplicador anexadas)
-  ````
-  - Arquivo de entrada (test/extrator_in.json):
-    ````json
-    {
-      "arquivos_completos": [],
-      "classes": {},
-      "funcoes": {
-        "componentes/fluxos_view.py": ["DialogFluxos._on_grupo_cols_global", "DialogFluxos._on_selecao_mudou"]
-      }
-    }
-    ````
-  - Segue a resposta que a IA nos deu em relação ao código enviado:
-    ````markdown
-    # Tarefa: suporte a extração de métodos de classe no extrator
-
-    ## Problema
-    Hoje o extrator resolve `arquivos_completos`, `classes` (extrai a classe inteira) e `funcoes` (apenas funções de nível de módulo). Ao pedir um método de classe via `"funcoes": {"arq.py": ["NomeClasse.nome_metodo"]}`, o extrator falha com "Nenhuma das classes/funções solicitadas foi encontrada".
-
-    Causa provável: a busca de `funcoes` só varre nós `ast.FunctionDef`/`ast.AsyncFunctionDef` cujo pai é o módulo, e não desce para dentro de nós `ast.ClassDef`. Por isso `DialogFluxos._on_selecao_mudou` é procurado como uma função de nível de módulo com esse nome literal, não existe no topo do arquivo, e é reportado como ausente.
-
-    ## O que implementar
-    Quando um alvo em `funcoes` contiver um ponto (formato `"Classe.metodo"`), o extrator deve:
-
-    1. Localizar o nó `ast.ClassDef` cujo nome seja a parte ANTES do ponto.
-    2. Dentro do corpo dessa classe, localizar o `ast.FunctionDef`/`ast.AsyncFunctionDef` cujo nome seja a parte DEPOIS do ponto.
-    3. Extrair o código-fonte do método, do início do primeiro decorator (se houver) até o fim do corpo, usando os mesmos `lineno`/`end_lineno` já usados para funções de módulo.
-    4. Em caso de falha, reportar qual parte faltou ("classe X não encontrada" vs. "método Y não encontrado na classe X"), em vez da mensagem genérica de ausência.
-
-    ## Retrocompatibilidade
-    Alvos SEM ponto continuam resolvendo como função de nível de módulo, exatamente como hoje. Nenhuma mudança de comportamento para `arquivos_completos` e `classes`.
-
-    ## Caso de teste
-    Extrair `DialogFluxos._on_selecao_mudou` de `componentes/fluxos_view.py` via `"funcoes": {"componentes/fluxos_view.py": ["DialogFluxos._on_selecao_mudou"]}` deve devolver o código-fonte do método (com seus decorators, se houver), e não "não encontrado".
-
-    ## Observações de robustez
-    - Suportar mais de um método da mesma classe na mesma lista (ex.: `["DialogFluxos._on_selecao_mudou", "DialogFluxos._construir"]`).
-    - Suportar métodos com decorators (`@staticmethod`, `@property`, etc.): a extração deve incluir a(s) linha(s) de decorator.
-    - Se houver classes aninhadas ou nomes repetidos, casar pela classe de nível mais externo cujo nome bate; documentar essa escolha caso ocorra ambiguidade.
-    ````
+- No itens.
 
 ## [Unreleased]
 - No itens.
+
+## [1.2.0] - 2026.06.24
+### Adicionado
+- **Extração de métodos de classe no `extrator.py`**: alvos em `"funcoes"` agora
+  aceitam a notação `"Classe.metodo"` (ex.: `"DialogFluxos._on_selecao_mudou"`),
+  extraindo apenas o método pedido. O `ExtratorAST` rastreia a classe que está
+  visitando e casa o método no escopo da classe nomeada — eliminando a
+  ambiguidade do nome solto, que casaria em qualquer classe ou no nível de
+  módulo. A extração inclui os decoradores do nó (do primeiro `@` até o fim do
+  corpo) e dedenta o trecho para leitura limpa; cobre também `async def`. Pedir a
+  classe inteira em paralelo não duplica o método. Retrocompatível: alvos sem
+  ponto continuam resolvendo como função de nível de módulo, sem mudança para
+  `arquivos_completos` e `classes`.
+
+### Alterado
+- **`INSTRUCOES_IA` do `mapear.py`**: o guia enviado à IA passou a documentar a
+  notação `"Classe.metodo"` em `"funcoes"` (com exemplo) e ganhou uma regra
+  orientando a pedir métodos sempre pontilhados — alinhado à convenção que o
+  `aplicador.py` já usa (`"tipo": "metodo"`, `"alvo": "Classe.metodo"`).
 
 ## [1.1.0] - 2026.06.22
 ### Adicionado
