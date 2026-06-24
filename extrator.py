@@ -26,24 +26,54 @@ class ExtratorAST(ast.NodeVisitor):
     def __init__(self, source_code, alvos_classes, alvos_funcoes):
         self.source_code = source_code
         self.alvos_classes = set(alvos_classes)
-        self.alvos_funcoes = set(alvos_funcoes)
+        # Separa alvos por nome simples (função de módulo ou nome solto) dos
+        # alvos em notação "Classe.metodo". O método pontilhado exige casar o
+        # nome DENTRO da classe certa — não basta o nome bater em qualquer lugar.
+        self.alvos_funcoes = set()
+        self.alvos_metodos = {}  # nome_da_classe -> {nomes_de_metodos}
+        for alvo in alvos_funcoes:
+            if "." in alvo:
+                classe, _, metodo = alvo.partition(".")
+                self.alvos_metodos.setdefault(classe, set()).add(metodo)
+            else:
+                self.alvos_funcoes.add(alvo)
         self.codigo_extraido = []
+        self._pilha_classes = []  # rastreia a classe que está sendo visitada
 
     def visit_ClassDef(self, no):
         if no.name in self.alvos_classes:
-            # Captura o código exato da classe inteira
+            # Captura o código exato da classe inteira.
             codigo = ast.get_source_segment(self.source_code, no)
             self.codigo_extraido.append((no.name, "Classe", codigo))
-        # Continua visitando para caso a IA tenha pedido uma função específica dentro de uma classe
-        # que ela NÃO pediu inteira.
+            # Se a classe inteira foi pedida, não duplicamos seus métodos.
+            self.alvos_metodos.pop(no.name, None)
+        # Empilha o nome para que os métodos no corpo saibam a que classe
+        # pertencem; segue visitando para achar métodos pedidos via
+        # "Classe.metodo" mesmo quando a classe inteira NÃO foi pedida.
+        self._pilha_classes.append(no.name)
         self.generic_visit(no)
+        self._pilha_classes.pop()
 
     def visit_FunctionDef(self, no):
+        capturado = False
+        # 1) Função/método pedido pelo nome simples (nível de módulo ou solto).
         if no.name in self.alvos_funcoes:
-            # Captura o código exato da função/método
             codigo = ast.get_source_segment(self.source_code, no)
             self.codigo_extraido.append((no.name, "Função/Método", codigo))
+            capturado = True
+        # 2) Método pedido como "Classe.metodo": só casa se estiver diretamente
+        #    dentro da classe nomeada (a classe mais interna atual na pilha).
+        if not capturado and self._pilha_classes:
+            classe_atual = self._pilha_classes[-1]
+            metodos = self.alvos_metodos.get(classe_atual)
+            if metodos and no.name in metodos:
+                codigo = ast.get_source_segment(self.source_code, no)
+                nome_completo = f"{classe_atual}.{no.name}"
+                self.codigo_extraido.append((nome_completo, "Método", codigo))
         self.generic_visit(no)
+
+    # Métodos/funções assíncronos (async def) usam a mesma lógica de casamento.
+    visit_AsyncFunctionDef = visit_FunctionDef
 
 def extrair_json_de_texto(texto: str) -> dict:
     """Procura e carrega o bloco JSON dentro de um texto (resposta da IA)."""
