@@ -357,7 +357,7 @@ def mapear_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, linha
         "    \"caminho/relativo/do/arquivo2.py\": [\"NomeDaClasse\", \"OutraClasse\"]\n"
         "  },\n"
         "  \"funcoes\": {\n"
-        "    \"caminho/relativo/do/arquivo3.py\": [\"nome_da_funcao\", \"outra_funcao\"]\n"
+        "    \"caminho/relativo/do/arquivo3.py\": [\"nome_da_funcao\", \"outra_funcao\", \"NomeDaClasse.nome_do_metodo\"]\n"
         "  }\n"
         "}\n"
         "```\n\n"
@@ -369,6 +369,10 @@ def mapear_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, linha
         "4. Arquivos listados na seção **'⚙️ Arquivos de Configuração e Outros'** (ex: `.json`, `.yaml`, `.toml`, `.env`, `.cfg`) "
         "NÃO são código Python e só podem ser obtidos via `\"arquivos_completos\"`. Nunca tente pedir uma `\"classe\"` ou "
         "`\"funcao\"` desses arquivos.\n"
+        "5. Para pedir um MÉTODO de uma classe, use a notação `\"Classe.metodo\"` dentro de "
+        "`\"funcoes\"` (ex: `\"NomeDaClasse.nome_do_metodo\"`). Não peça o método pelo nome solto: "
+        "ele é ambíguo (pode existir em várias classes) e não casa. Para a classe inteira, "
+        "continue usando `\"classes\"`.\n"
     )
 
     mapear_completo.append(instrucoes_ia)
