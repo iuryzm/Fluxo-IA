@@ -16,7 +16,50 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
   só o `mapear.py` aplica os padrões.
 
 ## [WorkingAt]
-- No itens.
+- Corrigir o problema:
+  ````bash
+  python .\main.py extrair .\test\extrator_in.json ..\VisualizadorPN .\test\extrator_out.md                        
+  🔍 Lendo as requisições da IA...
+  ✅ Extração concluída! Arquivo gerado em: .\test\extrator_out.md (com instruções do aplicador anexadas)
+  ````
+  - Arquivo de entrada (test/extrator_in.json):
+    ````json
+    {
+      "arquivos_completos": [],
+      "classes": {},
+      "funcoes": {
+        "componentes/fluxos_view.py": ["DialogFluxos._on_grupo_cols_global", "DialogFluxos._on_selecao_mudou"]
+      }
+    }
+    ````
+  - Segue a resposta que a IA nos deu em relação ao código enviado:
+    ````markdown
+    # Tarefa: suporte a extração de métodos de classe no extrator
+
+    ## Problema
+    Hoje o extrator resolve `arquivos_completos`, `classes` (extrai a classe inteira) e `funcoes` (apenas funções de nível de módulo). Ao pedir um método de classe via `"funcoes": {"arq.py": ["NomeClasse.nome_metodo"]}`, o extrator falha com "Nenhuma das classes/funções solicitadas foi encontrada".
+
+    Causa provável: a busca de `funcoes` só varre nós `ast.FunctionDef`/`ast.AsyncFunctionDef` cujo pai é o módulo, e não desce para dentro de nós `ast.ClassDef`. Por isso `DialogFluxos._on_selecao_mudou` é procurado como uma função de nível de módulo com esse nome literal, não existe no topo do arquivo, e é reportado como ausente.
+
+    ## O que implementar
+    Quando um alvo em `funcoes` contiver um ponto (formato `"Classe.metodo"`), o extrator deve:
+
+    1. Localizar o nó `ast.ClassDef` cujo nome seja a parte ANTES do ponto.
+    2. Dentro do corpo dessa classe, localizar o `ast.FunctionDef`/`ast.AsyncFunctionDef` cujo nome seja a parte DEPOIS do ponto.
+    3. Extrair o código-fonte do método, do início do primeiro decorator (se houver) até o fim do corpo, usando os mesmos `lineno`/`end_lineno` já usados para funções de módulo.
+    4. Em caso de falha, reportar qual parte faltou ("classe X não encontrada" vs. "método Y não encontrado na classe X"), em vez da mensagem genérica de ausência.
+
+    ## Retrocompatibilidade
+    Alvos SEM ponto continuam resolvendo como função de nível de módulo, exatamente como hoje. Nenhuma mudança de comportamento para `arquivos_completos` e `classes`.
+
+    ## Caso de teste
+    Extrair `DialogFluxos._on_selecao_mudou` de `componentes/fluxos_view.py` via `"funcoes": {"componentes/fluxos_view.py": ["DialogFluxos._on_selecao_mudou"]}` deve devolver o código-fonte do método (com seus decorators, se houver), e não "não encontrado".
+
+    ## Observações de robustez
+    - Suportar mais de um método da mesma classe na mesma lista (ex.: `["DialogFluxos._on_selecao_mudou", "DialogFluxos._construir"]`).
+    - Suportar métodos com decorators (`@staticmethod`, `@property`, etc.): a extração deve incluir a(s) linha(s) de decorator.
+    - Se houver classes aninhadas ou nomes repetidos, casar pela classe de nível mais externo cujo nome bate; documentar essa escolha caso ocorra ambiguidade.
+    ````
 
 ## [Unreleased]
 - No itens.
