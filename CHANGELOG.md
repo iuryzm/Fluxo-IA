@@ -14,254 +14,40 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - Estender a lógica de exclusão (`--excluir` / `.resumoignore`) ao `extrator.py`,
   para que arquivos fora do mapa também não possam ser pedidos por caminho — hoje
   só o `mapear.py` aplica os padrões.
-- Fazer interface gráfica com PySide6.
+- Docstrings are important.
+- 1º monte um plano de trabalho. Depois iremos executar.
 
 ## [WorkingAt]
-- Relato de um problema
-### Problema
-Segue o final do arquivo tests/test_fluxos_concatenar.py
-...
-
-
-def test_concatenar_legenda_inexistente_erro():
-    backend = FakeBackend(_base_duas_legendas())
-    executor = FluxoExecutor(backend)
-
-    passo = {
-        "tipo": TIPO_CONCATENAR,
-        "legendas_entrada": [
-            {"Versão": "A", "Cenário": "P50"},
-            {"Versão": "NAO_EXISTE", "Cenário": "P50"},
-        ],
-        "novos_grupos": {"Versão": "AB", "Cenário": "P50"},
-    }
-    with pytest.raises(ValueError, match="não corresponde a nenhuma linha"):
-        executor._exec_concatenar(passo, cb=None)
-
-
-Ao usar o comando aplicar para alterar esse arquivo criando 2 novas funções nele ficou assim:
-
-def test_concatenar_legenda_inexistente_erro():
-    backend = FakeBackend(_base_duas_legendas())
-    executor = FluxoExecutor(backend)
-
-    passo = {
-        "tipo": TIPO_CONCATENAR,
-        "legendas_entrada": [
-            {"Versão": "A", "Cenário": "P50"},
-            {"Versão": "NAO_EXISTE", "Cenário": "P50"},
-        ],
-        "novos_grupos": {"Versão": "AB", "Cenário": "P50"},
-    }
-    with pytest.raises(ValueError, match="não corresponde a nenhuma linha"):
-        executor._exec_concatenar(passo, cb=None)
-    # ---------------------------------------------------------------------- #
-    # H1: carimbo do Arquivo do fluxo via _publicar
-    # ---------------------------------------------------------------------- #
-    def test_publicar_carimba_arquivo_do_fluxo():
-        """Quando o fluxo define 'arquivo_saida', toda saída publicada recebe esse
-        nome na coluna 'Arquivo' — base da identidade do fluxo e da substituição
-        idempotente (H2)."""
-        backend = FakeBackend(_base_duas_legendas())
-        executor = FluxoExecutor(backend)
-
-        fluxo = {
-            "nome": "f",
-            "arquivo_saida": "Resultado do Fluxo X",
-            "passos": [
-                {"tipo": TIPO_CONCATENAR,
-                 "rotulo": "Unir A+B",
-                 "legendas_entrada": [
-                     {"Versão": "A", "Cenário": "P50"},
-                     {"Versão": "B", "Cenário": "P50"},
-                 ],
-                 "novos_grupos": {"Versão": "AB", "Cenário": "P50"}},
-            ],
-        }
-        executor.executar(fluxo)
-
-        # Toda linha gerada pelo fluxo carrega o Arquivo do fluxo.
-        gerado = backend.df_bruto.filter(pl.col("Versão") == "AB")
-        assert gerado.height == 4
-        assert set(gerado["Arquivo"].to_list()) == {"Resultado do Fluxo X"}
-
-
-    def test_publicar_sem_arquivo_saida_nao_carimba():
-        """Sem 'arquivo_saida', o _publicar não toca em 'Arquivo' (preserva o
-        comportamento anterior — os testes legados dependem disso)."""
-        backend = FakeBackend(_base_duas_legendas())
-        executor = FluxoExecutor(backend)
-
-        fluxo = {
-            "nome": "f",
-            "passos": [
-                {"tipo": TIPO_CONCATENAR,
-                 "legendas_entrada": [
-                     {"Versão": "A", "Cenário": "P50"},
-                     {"Versão": "B", "Cenário": "P50"},
-                 ],
-                 "novos_grupos": {"Versão": "AB", "Cenário": "P50"}},
-            ],
-        }
-        executor.executar(fluxo)
-
-        gerado = backend.df_bruto.filter(pl.col("Versão") == "AB")
-        # Arquivo original preservado (arq_A / arq_B), pois não houve carimbo de fluxo.
-        assert set(gerado["Arquivo"].to_list()) == {"arq_A", "arq_B"}
-
-
-O comando usado foi:
-python .\main.py aplicar .\test\aplicador_in.md ..\VisualizadorPN --html-diff .\test\aplicador_out.html --aplicar
-
-Segue o arquivo test/aplicador_in.md:
-````json
-{
-  "operacoes": [
-    {"acao": "trecho", "arquivo": "tests/test_fluxos_concatenar.py", "tipo": "arquivo", "posicao": "depois", "ancora_id": "a_fim_teste", "codigo_id": "b_teste_arquivo"}
-  ]
-}
-````
-
-````python
-# --- id=a_fim_teste ---
-    with pytest.raises(ValueError, match="não corresponde a nenhuma linha"):
-        executor._exec_concatenar(passo, cb=None)
-
-
-# --- id=b_teste_arquivo ---
-
-# ---------------------------------------------------------------------- #
-# H1: carimbo do Arquivo do fluxo via _publicar
-# ---------------------------------------------------------------------- #
-def test_publicar_carimba_arquivo_do_fluxo():
-    """Quando o fluxo define 'arquivo_saida', toda saída publicada recebe esse
-    nome na coluna 'Arquivo' — base da identidade do fluxo e da substituição
-    idempotente (H2)."""
-    backend = FakeBackend(_base_duas_legendas())
-    executor = FluxoExecutor(backend)
-
-    fluxo = {
-        "nome": "f",
-        "arquivo_saida": "Resultado do Fluxo X",
-        "passos": [
-            {"tipo": TIPO_CONCATENAR,
-             "rotulo": "Unir A+B",
-             "legendas_entrada": [
-                 {"Versão": "A", "Cenário": "P50"},
-                 {"Versão": "B", "Cenário": "P50"},
-             ],
-             "novos_grupos": {"Versão": "AB", "Cenário": "P50"}},
-        ],
-    }
-    executor.executar(fluxo)
-
-    # Toda linha gerada pelo fluxo carrega o Arquivo do fluxo.
-    gerado = backend.df_bruto.filter(pl.col("Versão") == "AB")
-    assert gerado.height == 4
-    assert set(gerado["Arquivo"].to_list()) == {"Resultado do Fluxo X"}
-
-
-def test_publicar_sem_arquivo_saida_nao_carimba():
-    """Sem 'arquivo_saida', o _publicar não toca em 'Arquivo' (preserva o
-    comportamento anterior — os testes legados dependem disso)."""
-    backend = FakeBackend(_base_duas_legendas())
-    executor = FluxoExecutor(backend)
-
-    fluxo = {
-        "nome": "f",
-        "passos": [
-            {"tipo": TIPO_CONCATENAR,
-             "legendas_entrada": [
-                 {"Versão": "A", "Cenário": "P50"},
-                 {"Versão": "B", "Cenário": "P50"},
-             ],
-             "novos_grupos": {"Versão": "AB", "Cenário": "P50"}},
-        ],
-    }
-    executor.executar(fluxo)
-
-    gerado = backend.df_bruto.filter(pl.col("Versão") == "AB")
-    # Arquivo original preservado (arq_A / arq_B), pois não houve carimbo de fluxo.
-    assert set(gerado["Arquivo"].to_list()) == {"arq_A", "arq_B"}
-````
-Eu esperava que o arquivo ficaria assim:
-...
-
-
-def test_concatenar_legenda_inexistente_erro():
-    backend = FakeBackend(_base_duas_legendas())
-    executor = FluxoExecutor(backend)
-
-    passo = {
-        "tipo": TIPO_CONCATENAR,
-        "legendas_entrada": [
-            {"Versão": "A", "Cenário": "P50"},
-            {"Versão": "NAO_EXISTE", "Cenário": "P50"},
-        ],
-        "novos_grupos": {"Versão": "AB", "Cenário": "P50"},
-    }
-    with pytest.raises(ValueError, match="não corresponde a nenhuma linha"):
-        executor._exec_concatenar(passo, cb=None)
-
-# ---------------------------------------------------------------------- #
-# H1: carimbo do Arquivo do fluxo via _publicar
-# ---------------------------------------------------------------------- #
-def test_publicar_carimba_arquivo_do_fluxo():
-    """Quando o fluxo define 'arquivo_saida', toda saída publicada recebe esse
-    nome na coluna 'Arquivo' — base da identidade do fluxo e da substituição
-    idempotente (H2)."""
-    backend = FakeBackend(_base_duas_legendas())
-    executor = FluxoExecutor(backend)
-
-    fluxo = {
-        "nome": "f",
-        "arquivo_saida": "Resultado do Fluxo X",
-        "passos": [
-            {"tipo": TIPO_CONCATENAR,
-                "rotulo": "Unir A+B",
-                "legendas_entrada": [
-                    {"Versão": "A", "Cenário": "P50"},
-                    {"Versão": "B", "Cenário": "P50"},
-                ],
-                "novos_grupos": {"Versão": "AB", "Cenário": "P50"}},
-        ],
-    }
-    executor.executar(fluxo)
-
-    # Toda linha gerada pelo fluxo carrega o Arquivo do fluxo.
-    gerado = backend.df_bruto.filter(pl.col("Versão") == "AB")
-    assert gerado.height == 4
-    assert set(gerado["Arquivo"].to_list()) == {"Resultado do Fluxo X"}
-
-
-def test_publicar_sem_arquivo_saida_nao_carimba():
-    """Sem 'arquivo_saida', o _publicar não toca em 'Arquivo' (preserva o
-    comportamento anterior — os testes legados dependem disso)."""
-    backend = FakeBackend(_base_duas_legendas())
-    executor = FluxoExecutor(backend)
-
-    fluxo = {
-        "nome": "f",
-        "passos": [
-            {"tipo": TIPO_CONCATENAR,
-                "legendas_entrada": [
-                    {"Versão": "A", "Cenário": "P50"},
-                    {"Versão": "B", "Cenário": "P50"},
-                ],
-                "novos_grupos": {"Versão": "AB", "Cenário": "P50"}},
-        ],
-    }
-    executor.executar(fluxo)
-
-    gerado = backend.df_bruto.filter(pl.col("Versão") == "AB")
-    # Arquivo original preservado (arq_A / arq_B), pois não houve carimbo de fluxo.
-    assert set(gerado["Arquivo"].to_list()) == {"arq_A", "arq_B"}
-
+- Definir as especificações da interface gráfica para o main.py e todas suas funções.
+  - Pensei em usar PySide6.
+  - Fazer um menu lateral com os botões Identificar Projeto, Mapear, Extrair e Aplicar que nos leva para a tela de cada uma dessas funções.
+  - Usar MVC para a interface de cada botão vale a pena?
+  - Se achar adequado podemor renomear e/ou reorganizar os arquivos em novas pastas.
+  - Fazer um sistema de aba superior que dê para adicionar ou remover as abas e em cada abas estaremos num projeto diferente.
+  - Seria interessante pordermos gravar em cada projeto os ultimos comandos realizados, tanto suas entradas quanto suas saídas.
+  - Também seria interessante termo um salvar e carregar os projetos para facilitar para o usuário não ter que configurar tudo novamente para cada projeto.
+  - Como forma de estatística seria legal armazenarmos em cada projeto quantas vezes usamos cada comando, quantas linhas de código (ou outra informação interessante sobre estatística de código) já foi alterada ou lida ou apagada
+  - Seria possível ao mapear o projeto totalizarmos quantas linhas cada arquivo do projeto possui (ou/e outra estatística) e quantas linhas no total o projeto possui para podermos fazer um gráfico de evolução do tamanho do projeto.
+  - Aceito sugestões.
 
 ## [Unreleased]
+- No itens.
+
+## [1.3.0] - 2026.06.25
 ### Added
 - **Feat:** Adicionada colorização ANSI na saída do console do `aplicador.py` para facilitar a leitura de diffs e mensagens de status.
 - **Docs:** Inseridas docstrings detalhadas nas classes e funções principais dos arquivos `aplicador.py`, `clipboard.py`, `extrator.py`, `main.py` e `mapear.py`.
+- **Feat:** `aplicador.py` — `_deslocar_bloco`, helper que desloca um bloco por N
+  colunas preservando a indentação relativa.
+
+### Changed
+- **Fix:** `aplicador.py` — a `acao: "trecho"` agora posiciona o código novo por
+  indentação WYSIWYG (deslocamento por `delta` entre a coluna autorada e a real da
+  âncora), em vez de re-indentar tudo para a coluna da âncora. Corrige inserções num
+  escopo mais raso que a âncora (ex.: funções de nível de módulo depois de uma âncora
+  dentro de outra função, que antes saíam indentadas como código aninhado).
+- **Docs:** Regras 4 e 7 das instruções do `aplicador.py` reescritas para refletir a
+  semântica WYSIWYG do `trecho`.
 
 ## [1.2.0] - 2026.06.24
 ### Added
