@@ -117,14 +117,21 @@ busca da âncora cobre o arquivo inteiro (não há nó AST para delimitar).
    "adicionar" com tipo "funcao"/"classe" insere no nível do módulo. Em "trecho",
    "arquivo" usa o arquivo inteiro como escopo de busca da âncora.
 3. Entregue SEMPRE a definição completa (incluindo decoradores) em "substituir"/"adicionar".
-4. Não se preocupe com indentação: o script re-indenta para a coluna correta. Em "trecho",
-   o código novo herda a indentação da primeira linha da âncora.
+4. Em "substituir"/"adicionar" (nó inteiro), não se preocupe com indentação: o script
+   re-indenta para a coluna correta do nó. Em "trecho" é WYSIWYG: escreva a âncora na
+   indentação REAL que ela tem no arquivo (regra 7) e escreva o código novo na coluna
+   em que ele deve ficar no resultado final. O script preserva a indentação relativa que
+   você escrever e corrige apenas o desencontro entre a coluna que você deu à âncora e
+   a real. Ex.: para inserir funções de nível de módulo depois de uma âncora que está
+   DENTRO de uma função, escreva a âncora indentada (como no arquivo) e as funções
+   novas na coluna 0.
 5. Cada `codigo_id`/`ancora_id` do plano deve ter um `# --- id=... ---` correspondente
    no bloco de código.
 6. Não inclua números de linha, diffs ou contexto ao redor — só o código novo.
-7. A âncora de "trecho" deve ser copiada IGUALZINHO ao código atual (a comparação ignora
-   indentação e espaços à direita, mas o conteúdo precisa bater). Prefira âncoras curtas
-   e únicas dentro do escopo (1 a 3 linhas costuma bastar).
+7. A âncora de "trecho" deve ser copiada IGUALZINHO ao código atual, INCLUSIVE a
+   indentação real. A busca ignora indentação/espaços para CASAR, mas a coluna que
+   você escreve na âncora é a referência para posicionar o código novo — então copie a
+   coluna de verdade. Prefira âncoras curtas e únicas no escopo (1 a 3 linhas).
 8. Em "trecho" com "posicao": "antes"/"depois", o `codigo_id` é obrigatório e não pode
    ser vazio.
 """
@@ -259,6 +266,12 @@ def _aplicar_trecho_no_texto(fonte: str, no, ancora: str, codigo: str, posicao: 
     `no` é o nó AST que delimita a janela de busca; se `no` for None, a janela é o
     arquivo inteiro (caso de configs não-Python). A âncora precisa casar exatamente
     uma vez dentro da janela. Retorna (nova_fonte, erro_ou_None).
+
+    Indentação (WYSIWYG): o código novo entra com a indentação que a IA escreveu,
+    corrigida apenas pelo `delta` entre a coluna que ela deu à âncora e a coluna real
+    da âncora no arquivo. Assim a indentação RELATIVA escrita pela IA é preservada —
+    inclusive quando o trecho insere código num escopo mais raso (ex.: funções de
+    módulo logo depois de uma âncora que vive dentro de outra função).
     """
     linhas = fonte.splitlines()
 
@@ -267,6 +280,13 @@ def _aplicar_trecho_no_texto(fonte: str, no, ancora: str, codigo: str, posicao: 
     else:
         ini, fim = _span_do_no(no)          # 1-based inclusivo
         win_ini, win_fim = ini - 1, fim
+
+    # Coluna que a IA deu à âncora (1ª linha de conteúdo), ANTES de qualquer dedent.
+    col_ancora_autorada = 0
+    for ln in ancora.split("\n"):
+        if ln.strip():
+            col_ancora_autorada = len(ln) - len(ln.lstrip())
+            break
 
     # Normaliza a âncora e descarta linhas em branco no começo/fim.
     anc = [ln.rstrip() for ln in textwrap.dedent(ancora).strip("\n").split("\n")]
@@ -293,10 +313,14 @@ def _aplicar_trecho_no_texto(fonte: str, no, ancora: str, codigo: str, posicao: 
 
     m = matches[0]
     primeira = linhas[m]
-    col = len(primeira) - len(primeira.lstrip())
+    col_real = len(primeira) - len(primeira.lstrip())
+
+    # Corrige só o desencontro âncora-autorada × âncora-real; o resto da indentação
+    # relativa que a IA escreveu no `codigo` é mantido intacto.
+    delta = col_real - col_ancora_autorada
 
     if codigo and codigo.strip():
-        novo_codigo = _reindentar(codigo, col).split("\n")
+        novo_codigo = _deslocar_bloco(codigo, delta).split("\n")
     else:
         novo_codigo = []  # apagar (substituir por nada)
 
@@ -830,3 +854,24 @@ if __name__ == "__main__":
 #
 # 4) Ver as instruções para colar no chat com a IA:
 #    python aplicador.py --instrucoes
+
+
+def _deslocar_bloco(codigo: str, delta: int) -> str:
+    """Desloca o bloco inteiro por `delta` colunas, preservando a indentação
+    RELATIVA que a IA escreveu (a forma do código não muda; só a coluna-base).
+
+    delta > 0 adiciona espaços à esquerda de cada linha não-vazia; delta < 0 remove
+    espaços à esquerda, no máximo até a indentação mínima do bloco (assim nunca "come"
+    conteúdo nem distorce a estrutura). Linhas em branco continuam vazias.
+    """
+    if delta == 0:
+        return codigo
+    linhas = codigo.split("\n")
+    if delta > 0:
+        prefixo = " " * delta
+        return "\n".join(prefixo + ln if ln.strip() else "" for ln in linhas)
+    indents = [len(ln) - len(ln.lstrip()) for ln in linhas if ln.strip()]
+    if not indents:
+        return codigo
+    shift = min(-delta, min(indents))
+    return "\n".join(ln[shift:] if ln.strip() else "" for ln in linhas)
