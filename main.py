@@ -19,6 +19,7 @@ import aplicador
 
 
 def _registrar_mapear(sub):
+    """Registra, valida e define todos os argumentos da interface de comandos voltados à operação 'mapear'."""
     p = sub.add_parser(
         "mapear",
         help="Gera o mapear de arquitetura do projeto (mapear.py).",
@@ -48,6 +49,7 @@ def _registrar_mapear(sub):
 
 
 def _registrar_extrair(sub):
+    """Registra, valida e define todos os argumentos da interface de comandos voltados à operação 'extrair'."""
     p = sub.add_parser(
         "extrair",
         help="Extrai os trechos de código pedidos pela IA (extrator.py).",
@@ -75,6 +77,7 @@ def _registrar_extrair(sub):
 
 
 def _registrar_aplicar(sub):
+    """Registra, valida e define todos os argumentos da interface de comandos voltados à operação 'aplicar'."""
     p = sub.add_parser(
         "aplicar",
         help="Aplica as alterações propostas pela IA (aplicador.py).",
@@ -104,6 +107,7 @@ def _registrar_aplicar(sub):
 
 
 def main(argv=None):
+    """Ponto de entrada único e centralizado da CLI encarregado de rotear os argumentos e despachar os comandos."""
     parser = argparse.ArgumentParser(
         prog="main.py",
         description="Toolkit de edição de código assistida por IA (pipeline mapear → extrair → aplicar).",

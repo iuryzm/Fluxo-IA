@@ -313,6 +313,7 @@ def _aplicar_trecho_no_texto(fonte: str, no, ancora: str, codigo: str, posicao: 
 
 
 def _substituir_no_texto(fonte: str, no, codigo_novo: str) -> str:
+    """Substitui o bloco correspondente a um nó AST pelo novo código reformatado, preservando o restante do texto."""
     inicio, fim = _span_do_no(no)
     linhas = fonte.splitlines()
     novo = _reindentar(codigo_novo, no.col_offset)
@@ -321,6 +322,7 @@ def _substituir_no_texto(fonte: str, no, codigo_novo: str) -> str:
 
 
 def _adicionar_no_texto(fonte: str, codigo_novo: str) -> str:
+    """Acrescenta um novo bloco de código ou definição no final do escopo global do arquivo fornecido."""
     corpo = textwrap.dedent(codigo_novo).strip("\n")
     base = fonte.rstrip("\n")
     if base:
@@ -649,22 +651,23 @@ def aplicar_em_arquivo(rel: str, alvo: Path, ops: list, blocos: dict) -> tuple:
 
 def executar(resposta_path_str: str, projeto_path_str: str,
              aplicar: bool, diff_path_str: str, sem_backup: bool, html_diff=None, colar=False):
+    """Orquestra o carregamento e aplicação do plano de operações, exibindo os diffs com colorização no console."""
     projeto_path = Path(projeto_path_str).resolve()
 
     if colar:
         if clipboard is None:
-            print("❌ clipboard.py não encontrado ao lado deste script; não dá para usar --colar.")
+            print("\033[31m❌ clipboard.py não encontrado ao lado deste script; não dá para usar --colar.\033[0m")
             sys.exit(1)
         try:
             texto = clipboard.colar()
         except clipboard.ClipboardIndisponivel as e:
-            print(f"❌ Não consegui ler a área de transferência: {e}")
+            print(f"\033[31m❌ Não consegui ler a área de transferência: {e}\033[0m")
             sys.exit(1)
         print("📋 Lendo a resposta da IA da área de transferência...")
     else:
         resposta_path = Path(resposta_path_str).resolve()
         if not resposta_path.exists():
-            print(f"❌ Arquivo com a resposta da IA não encontrado: {resposta_path}")
+            print(f"\033[31m❌ Arquivo com a resposta da IA não encontrado: {resposta_path}\033[0m")
             sys.exit(1)
         texto = resposta_path.read_text(encoding="utf-8", errors="replace")
     plano = carregar_plano(texto)
@@ -672,18 +675,19 @@ def executar(resposta_path_str: str, projeto_path_str: str,
     operacoes = plano.get("operacoes", [])
 
     if not operacoes:
-        print("⚠️ Nenhuma operação encontrada no plano (chave 'operacoes' vazia).")
+        print("\033[33m⚠️ Nenhuma operação encontrada no plano (chave 'operacoes' vazia).\033[0m")
         sys.exit(0)
 
-    print(f"🔧 {len(operacoes)} operação(ões) no plano · {len(blocos)} bloco(s) de código encontrados.")
+    print(f"\033[36m🔧 {len(operacoes)} operação(ões) no plano · {len(blocos)} bloco(s) de código encontrados.\033[0m")
     print(f"📂 Projeto: {projeto_path}")
-    print(f"{'✍️  MODO APLICAR (vai gravar)' if aplicar else '👀 MODO DRY-RUN (nada será gravado)'}\n")
+    print(f"\033[1;32m✍️  MODO APLICAR (vai gravar)\033[0m" if aplicar else f"\033[1;33m👀 MODO DRY-RUN (nada será gravado)\033[0m")
+    print()
 
     por_arquivo = defaultdict(list)
     for op in operacoes:
         rel = op.get("arquivo")
         if not rel:
-            print("⚠️ Operação sem 'arquivo' — ignorada.")
+            print("\033[33m⚠️ Operação sem 'arquivo' — ignorada.\033[0m")
             continue
         por_arquivo[rel].append(op)
 
@@ -700,15 +704,26 @@ def executar(resposta_path_str: str, projeto_path_str: str,
         if diff:
             todos_diffs.append(diff)
             diffs_arquivos.append((rel, diff))
-            print(f"📝 {rel}")
-            print(diff)
+            print(f"\033[1;34m📝 {rel}\033[0m")
+
+            # Realiza a colorização linha por linha do diff unificado estrutural
+            for linha in diff.splitlines():
+                if linha.startswith("+") and not linha.startswith("+++"):
+                    print(f"\033[32m{linha}\033[0m")
+                elif linha.startswith("-") and not linha.startswith("---"):
+                    print(f"\033[31m{linha}\033[0m")
+                elif linha.startswith("@@"):
+                    print(f"\033[36m{linha}\033[0m")
+                else:
+                    print(linha)
+
             if aplicar:
                 if alvo.exists() and not sem_backup:
                     shutil.copy2(alvo, alvo.with_suffix(alvo.suffix + ".bak"))
                 alvo.parent.mkdir(parents=True, exist_ok=True)
                 conteudo = novo if novo.endswith("\n") else novo + "\n"
                 alvo.write_text(conteudo, encoding="utf-8")
-                print(f"   ✅ gravado{'' if sem_backup else ' (backup .bak criado)'}\n")
+                print(f"   \033[32m✅ gravado{'' if sem_backup else ' (backup .bak criado)'}\033[0m\n")
             else:
                 print()
         else:
@@ -716,14 +731,14 @@ def executar(resposta_path_str: str, projeto_path_str: str,
 
     if diff_path_str and todos_diffs:
         Path(diff_path_str).write_text("\n".join(todos_diffs) + "\n", encoding="utf-8")
-        print(f"💾 Patch combinado salvo em: {diff_path_str}")
-        print(f"   Aplicar com Git:  git apply {diff_path_str}")
-        print(f"   Conferir antes:   git apply --check {diff_path_str}")
+        print(f"\033[32m💾 Patch combinado salvo em: {diff_path_str}\033[0m")
+        print(f"   Aplicar com Git:   git apply {diff_path_str}")
+        print(f"   Conferir antes:    git apply --check {diff_path_str}")
 
     if total_erros:
-        print("\n⚠️ Avisos/erros:")
+        print("\n\033[1;31m⚠️ Avisos/erros:\033[0m")
         for e in total_erros:
-            print(f"   - {e}")
+            print(f"   \033[31m- {e}\033[0m")
 
     if html_diff is not None:
         if diffs_arquivos or total_erros:
@@ -748,7 +763,7 @@ def executar(resposta_path_str: str, projeto_path_str: str,
             print("\n🌐 --html-diff: nada para mostrar (nenhuma mudança gerada).")
 
     if not aplicar and todos_diffs:
-        print("\nℹ️ Isto foi um dry-run. Use --aplicar para gravar, ou --diff arquivo.patch para salvar o patch.")
+        print("\n\033[33mℹ️ Isto foi um dry-run. Use --aplicar para gravar, ou --diff arquivo.patch para salvar o patch.\033[0m")
 
 
 if __name__ == "__main__":

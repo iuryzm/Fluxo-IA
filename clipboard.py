@@ -26,10 +26,12 @@ class ClipboardIndisponivel(RuntimeError):
 
 
 def _e_windows() -> bool:
+    """Verifica se o sistema operacional atual da máquina de execução é Windows."""
     return sys.platform.startswith("win")
 
 
 def _e_macos() -> bool:
+    """Verifica se o sistema operacional atual da máquina de execução é macOS."""
     return sys.platform == "darwin"
 
 
@@ -62,6 +64,7 @@ def _rodar(cmd, entrada=None, captura=False):
 # Windows (PowerShell preferido pela segurança de Unicode; clip como último recurso)
 # ----------------------------------------------------------------------------
 def _copiar_windows(texto: str):
+    """Copia o conteúdo textual fornecido para a área de transferência do Windows via PowerShell ou clip."""
     ps = _powershell()
     if ps:
         # Passa via arquivo temporário UTF-8 para evitar problemas de encoding/escape
@@ -88,6 +91,7 @@ def _copiar_windows(texto: str):
 
 
 def _colar_windows() -> str:
+    """Lê e retorna a cadeia de caracteres atualmente presente na área de transferência do Windows usando PowerShell."""
     ps = _powershell()
     if not ps:
         raise ClipboardIndisponivel(

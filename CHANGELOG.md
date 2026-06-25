@@ -14,15 +14,257 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - Estender a lógica de exclusão (`--excluir` / `.resumoignore`) ao `extrator.py`,
   para que arquivos fora do mapa também não possam ser pedidos por caminho — hoje
   só o `mapear.py` aplica os padrões.
+- Fazer interface gráfica com PySide6.
 
 ## [WorkingAt]
-- No itens.
+- Relato de um problema
+### Problema
+Segue o final do arquivo tests/test_fluxos_concatenar.py
+...
+
+
+def test_concatenar_legenda_inexistente_erro():
+    backend = FakeBackend(_base_duas_legendas())
+    executor = FluxoExecutor(backend)
+
+    passo = {
+        "tipo": TIPO_CONCATENAR,
+        "legendas_entrada": [
+            {"Versão": "A", "Cenário": "P50"},
+            {"Versão": "NAO_EXISTE", "Cenário": "P50"},
+        ],
+        "novos_grupos": {"Versão": "AB", "Cenário": "P50"},
+    }
+    with pytest.raises(ValueError, match="não corresponde a nenhuma linha"):
+        executor._exec_concatenar(passo, cb=None)
+
+
+Ao usar o comando aplicar para alterar esse arquivo criando 2 novas funções nele ficou assim:
+
+def test_concatenar_legenda_inexistente_erro():
+    backend = FakeBackend(_base_duas_legendas())
+    executor = FluxoExecutor(backend)
+
+    passo = {
+        "tipo": TIPO_CONCATENAR,
+        "legendas_entrada": [
+            {"Versão": "A", "Cenário": "P50"},
+            {"Versão": "NAO_EXISTE", "Cenário": "P50"},
+        ],
+        "novos_grupos": {"Versão": "AB", "Cenário": "P50"},
+    }
+    with pytest.raises(ValueError, match="não corresponde a nenhuma linha"):
+        executor._exec_concatenar(passo, cb=None)
+    # ---------------------------------------------------------------------- #
+    # H1: carimbo do Arquivo do fluxo via _publicar
+    # ---------------------------------------------------------------------- #
+    def test_publicar_carimba_arquivo_do_fluxo():
+        """Quando o fluxo define 'arquivo_saida', toda saída publicada recebe esse
+        nome na coluna 'Arquivo' — base da identidade do fluxo e da substituição
+        idempotente (H2)."""
+        backend = FakeBackend(_base_duas_legendas())
+        executor = FluxoExecutor(backend)
+
+        fluxo = {
+            "nome": "f",
+            "arquivo_saida": "Resultado do Fluxo X",
+            "passos": [
+                {"tipo": TIPO_CONCATENAR,
+                 "rotulo": "Unir A+B",
+                 "legendas_entrada": [
+                     {"Versão": "A", "Cenário": "P50"},
+                     {"Versão": "B", "Cenário": "P50"},
+                 ],
+                 "novos_grupos": {"Versão": "AB", "Cenário": "P50"}},
+            ],
+        }
+        executor.executar(fluxo)
+
+        # Toda linha gerada pelo fluxo carrega o Arquivo do fluxo.
+        gerado = backend.df_bruto.filter(pl.col("Versão") == "AB")
+        assert gerado.height == 4
+        assert set(gerado["Arquivo"].to_list()) == {"Resultado do Fluxo X"}
+
+
+    def test_publicar_sem_arquivo_saida_nao_carimba():
+        """Sem 'arquivo_saida', o _publicar não toca em 'Arquivo' (preserva o
+        comportamento anterior — os testes legados dependem disso)."""
+        backend = FakeBackend(_base_duas_legendas())
+        executor = FluxoExecutor(backend)
+
+        fluxo = {
+            "nome": "f",
+            "passos": [
+                {"tipo": TIPO_CONCATENAR,
+                 "legendas_entrada": [
+                     {"Versão": "A", "Cenário": "P50"},
+                     {"Versão": "B", "Cenário": "P50"},
+                 ],
+                 "novos_grupos": {"Versão": "AB", "Cenário": "P50"}},
+            ],
+        }
+        executor.executar(fluxo)
+
+        gerado = backend.df_bruto.filter(pl.col("Versão") == "AB")
+        # Arquivo original preservado (arq_A / arq_B), pois não houve carimbo de fluxo.
+        assert set(gerado["Arquivo"].to_list()) == {"arq_A", "arq_B"}
+
+
+O comando usado foi:
+python .\main.py aplicar .\test\aplicador_in.md ..\VisualizadorPN --html-diff .\test\aplicador_out.html --aplicar
+
+Segue o arquivo test/aplicador_in.md:
+````json
+{
+  "operacoes": [
+    {"acao": "trecho", "arquivo": "tests/test_fluxos_concatenar.py", "tipo": "arquivo", "posicao": "depois", "ancora_id": "a_fim_teste", "codigo_id": "b_teste_arquivo"}
+  ]
+}
+````
+
+````python
+# --- id=a_fim_teste ---
+    with pytest.raises(ValueError, match="não corresponde a nenhuma linha"):
+        executor._exec_concatenar(passo, cb=None)
+
+
+# --- id=b_teste_arquivo ---
+
+# ---------------------------------------------------------------------- #
+# H1: carimbo do Arquivo do fluxo via _publicar
+# ---------------------------------------------------------------------- #
+def test_publicar_carimba_arquivo_do_fluxo():
+    """Quando o fluxo define 'arquivo_saida', toda saída publicada recebe esse
+    nome na coluna 'Arquivo' — base da identidade do fluxo e da substituição
+    idempotente (H2)."""
+    backend = FakeBackend(_base_duas_legendas())
+    executor = FluxoExecutor(backend)
+
+    fluxo = {
+        "nome": "f",
+        "arquivo_saida": "Resultado do Fluxo X",
+        "passos": [
+            {"tipo": TIPO_CONCATENAR,
+             "rotulo": "Unir A+B",
+             "legendas_entrada": [
+                 {"Versão": "A", "Cenário": "P50"},
+                 {"Versão": "B", "Cenário": "P50"},
+             ],
+             "novos_grupos": {"Versão": "AB", "Cenário": "P50"}},
+        ],
+    }
+    executor.executar(fluxo)
+
+    # Toda linha gerada pelo fluxo carrega o Arquivo do fluxo.
+    gerado = backend.df_bruto.filter(pl.col("Versão") == "AB")
+    assert gerado.height == 4
+    assert set(gerado["Arquivo"].to_list()) == {"Resultado do Fluxo X"}
+
+
+def test_publicar_sem_arquivo_saida_nao_carimba():
+    """Sem 'arquivo_saida', o _publicar não toca em 'Arquivo' (preserva o
+    comportamento anterior — os testes legados dependem disso)."""
+    backend = FakeBackend(_base_duas_legendas())
+    executor = FluxoExecutor(backend)
+
+    fluxo = {
+        "nome": "f",
+        "passos": [
+            {"tipo": TIPO_CONCATENAR,
+             "legendas_entrada": [
+                 {"Versão": "A", "Cenário": "P50"},
+                 {"Versão": "B", "Cenário": "P50"},
+             ],
+             "novos_grupos": {"Versão": "AB", "Cenário": "P50"}},
+        ],
+    }
+    executor.executar(fluxo)
+
+    gerado = backend.df_bruto.filter(pl.col("Versão") == "AB")
+    # Arquivo original preservado (arq_A / arq_B), pois não houve carimbo de fluxo.
+    assert set(gerado["Arquivo"].to_list()) == {"arq_A", "arq_B"}
+````
+Eu esperava que o arquivo ficaria assim:
+...
+
+
+def test_concatenar_legenda_inexistente_erro():
+    backend = FakeBackend(_base_duas_legendas())
+    executor = FluxoExecutor(backend)
+
+    passo = {
+        "tipo": TIPO_CONCATENAR,
+        "legendas_entrada": [
+            {"Versão": "A", "Cenário": "P50"},
+            {"Versão": "NAO_EXISTE", "Cenário": "P50"},
+        ],
+        "novos_grupos": {"Versão": "AB", "Cenário": "P50"},
+    }
+    with pytest.raises(ValueError, match="não corresponde a nenhuma linha"):
+        executor._exec_concatenar(passo, cb=None)
+
+# ---------------------------------------------------------------------- #
+# H1: carimbo do Arquivo do fluxo via _publicar
+# ---------------------------------------------------------------------- #
+def test_publicar_carimba_arquivo_do_fluxo():
+    """Quando o fluxo define 'arquivo_saida', toda saída publicada recebe esse
+    nome na coluna 'Arquivo' — base da identidade do fluxo e da substituição
+    idempotente (H2)."""
+    backend = FakeBackend(_base_duas_legendas())
+    executor = FluxoExecutor(backend)
+
+    fluxo = {
+        "nome": "f",
+        "arquivo_saida": "Resultado do Fluxo X",
+        "passos": [
+            {"tipo": TIPO_CONCATENAR,
+                "rotulo": "Unir A+B",
+                "legendas_entrada": [
+                    {"Versão": "A", "Cenário": "P50"},
+                    {"Versão": "B", "Cenário": "P50"},
+                ],
+                "novos_grupos": {"Versão": "AB", "Cenário": "P50"}},
+        ],
+    }
+    executor.executar(fluxo)
+
+    # Toda linha gerada pelo fluxo carrega o Arquivo do fluxo.
+    gerado = backend.df_bruto.filter(pl.col("Versão") == "AB")
+    assert gerado.height == 4
+    assert set(gerado["Arquivo"].to_list()) == {"Resultado do Fluxo X"}
+
+
+def test_publicar_sem_arquivo_saida_nao_carimba():
+    """Sem 'arquivo_saida', o _publicar não toca em 'Arquivo' (preserva o
+    comportamento anterior — os testes legados dependem disso)."""
+    backend = FakeBackend(_base_duas_legendas())
+    executor = FluxoExecutor(backend)
+
+    fluxo = {
+        "nome": "f",
+        "passos": [
+            {"tipo": TIPO_CONCATENAR,
+                "legendas_entrada": [
+                    {"Versão": "A", "Cenário": "P50"},
+                    {"Versão": "B", "Cenário": "P50"},
+                ],
+                "novos_grupos": {"Versão": "AB", "Cenário": "P50"}},
+        ],
+    }
+    executor.executar(fluxo)
+
+    gerado = backend.df_bruto.filter(pl.col("Versão") == "AB")
+    # Arquivo original preservado (arq_A / arq_B), pois não houve carimbo de fluxo.
+    assert set(gerado["Arquivo"].to_list()) == {"arq_A", "arq_B"}
+
 
 ## [Unreleased]
-- No itens.
+### Added
+- **Feat:** Adicionada colorização ANSI na saída do console do `aplicador.py` para facilitar a leitura de diffs e mensagens de status.
+- **Docs:** Inseridas docstrings detalhadas nas classes e funções principais dos arquivos `aplicador.py`, `clipboard.py`, `extrator.py`, `main.py` e `mapear.py`.
 
 ## [1.2.0] - 2026.06.24
-### Adicionado
+### Added
 - **Extração de métodos de classe no `extrator.py`**: alvos em `"funcoes"` agora
   aceitam a notação `"Classe.metodo"` (ex.: `"DialogFluxos._on_selecao_mudou"`),
   extraindo apenas o método pedido. O `ExtratorAST` rastreia a classe que está
@@ -34,14 +276,14 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
   ponto continuam resolvendo como função de nível de módulo, sem mudança para
   `arquivos_completos` e `classes`.
 
-### Alterado
+### Changed
 - **`INSTRUCOES_IA` do `mapear.py`**: o guia enviado à IA passou a documentar a
   notação `"Classe.metodo"` em `"funcoes"` (com exemplo) e ganhou uma regra
   orientando a pedir métodos sempre pontilhados — alinhado à convenção que o
   `aplicador.py` já usa (`"tipo": "metodo"`, `"alvo": "Classe.metodo"`).
 
 ## [1.1.0] - 2026.06.22
-### Adicionado
+### Added
 - **`main.py` (ponto de entrada único)**: despachante com os subcomandos `mapear`,
   `extrair` e `aplicar`, que delegam para as funções `executar*` de cada módulo
   sem duplicar lógica. Aceita os mesmos argumentos dos scripts originais.
@@ -67,7 +309,7 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
   no navegador. Aceita um caminho para salvar o HTML; sem valor, usa um arquivo
   temporário. Reaproveita o `_gerar_diff` que já existia.
 
-### Alterado
+### Changed
 - **Renomeação do gerador de mapa**: `gerar_mapa.py` passou a se chamar
   `mapear.py`, e o subcomando correspondente no `main.py` passou de `mapa` para
   `mapear`.
@@ -78,7 +320,7 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
   ser opcional quando se usa `--colar`, já que a resposta vem da área de
   transferência.
 
-### Corrigido
+### Fixed
 - **Indentação dupla em blocos indentados (`indexar_blocos_codigo`)**: o
   `.strip()` aplicado a cada bloco de código removia a indentação apenas da
   **primeira** linha, desalinhando o trecho e fazendo o
@@ -102,14 +344,14 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - **Quebra de renderização no chat**: Correção de um problema onde o renderizador Markdown fatiaria visualmente o script ao tentar imprimi-lo ou copiá-lo. As crases (` ``` `) de delimitação do prompt agora são geradas dinamicamente via variáveis/f-strings no código Python.
 
 ## [1.0.1] - 2026.06.17
-### Adicionado
+### Added
 - `extrator.py` agora anexa automaticamente, ao fim do Markdown gerado, as
   instruções de formato do `aplicador.py` (plano + blocos de código). Isso fecha
   o ciclo do pipeline: a IA recebe o código extraído já acompanhado do guia de
   como devolver a solução, sem precisar rodar `aplicador.py --instrucoes` à parte.
 - Flag `--sem-instrucoes` no `extrator.py` para suprimir esse anexo e gerar só o
   código puro.
-### Alterado
+### Changed
 - `extrator.py` passou a importar a constante `INSTRUCOES_IA` do `aplicador.py`
   (que precisa estar na mesma pasta). Se o `aplicador.py` não for encontrado, a
   extração segue normalmente, apenas sem o anexo e com um aviso.
@@ -118,7 +360,7 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 Primeira versão documentada do fluxo **Mapear · Extrair · Aplicar**.
 
-### Adicionado
+### Added
 
 #### `gerar_mapa.py`
 - Geração de um mapa em Markdown da arquitetura do projeto a partir das linhas

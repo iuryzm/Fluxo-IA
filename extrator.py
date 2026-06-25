@@ -23,6 +23,7 @@ except ImportError:
     clipboard = None
 
 class ExtratorAST(ast.NodeVisitor):
+    """Visitador AST responsável por localizar e extrair o código-fonte de classes, funções e métodos selecionados."""
     def __init__(self, source_code, alvos_classes, alvos_funcoes):
         self.source_code = source_code
         self.linhas_fonte = source_code.splitlines()
@@ -165,6 +166,7 @@ def _obter_texto_resposta(resposta_path_str: str, colar: bool) -> dict:
 
 def executar_extracao(resposta_path_str: str, projeto_path_str: str, saida_path_str: str,
                       incluir_instrucoes: bool = True, colar: bool = False, copiar: bool = False):
+    """Lê os requisitos estruturais da resposta da IA, extrai as classes e funções pedidas e grava o arquivo Markdown de saída."""
     projeto_path = Path(projeto_path_str).resolve()
 
     requisicoes = _obter_texto_resposta(resposta_path_str, colar)

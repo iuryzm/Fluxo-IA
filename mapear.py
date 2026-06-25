@@ -13,6 +13,7 @@ except ImportError:
     clipboard = None
 
 class AnalisadorAST(ast.NodeVisitor):
+    """Analisador AST encarregado de catalogar imports, assinaturas e as primeiras linhas de docstrings estruturais."""
     def __init__(self):
         self.resultado = []
         self.classe_atual = None
@@ -57,25 +58,25 @@ class AnalisadorAST(ast.NodeVisitor):
     def visit_FunctionDef(self, no):
         # Ignora funções privadas/mágicas (opcional, comente as duas linhas abaixo se quiser ver os def __init__)
         # if no.name.startswith("__") and no.name != "__init__":
-        #     return
+        #      return
 
-        prefixo = "  * " if self.classe_atual else "* "
-        argumentos = [arg.arg for arg in no.args.args if arg.arg != 'self']
-        args_formatados = ", ".join(argumentos)
+            prefixo = "  * " if self.classe_atual else "* "
+            argumentos = [arg.arg for arg in no.args.args if arg.arg != 'self']
+            args_formatados = ", ".join(argumentos)
 
-        retorno = ""
-        if no.returns:
-            try:
-                retorno = f" -> {ast.unparse(no.returns)}"
-            except Exception:
-                pass
+            retorno = ""
+            if no.returns:
+                try:
+                    retorno = f" -> {ast.unparse(no.returns)}"
+                except Exception:
+                    pass
 
-        self.resultado.append(f"{prefixo}`def {no.name}({args_formatados}){retorno}`")
+            self.resultado.append(f"{prefixo}`def {no.name}({args_formatados}){retorno}`")
 
-        docstring = ast.get_docstring(no)
-        if docstring:
-            primeira_linha = docstring.strip().split('\n')[0]
-            self.resultado.append(f"  {prefixo}  *Doc:* {primeira_linha}")
+            docstring = ast.get_docstring(no)
+            if docstring:
+                primeira_linha = docstring.strip().split('\n')[0]
+                self.resultado.append(f"  {prefixo}  *Doc:* {primeira_linha}")
 
 def processar_arquivo_py(caminho_arquivo: Path, caminho_base: Path) -> str:
     """Lê um arquivo .py e retorna seu resumo em Markdown."""
@@ -243,6 +244,7 @@ def extrair_arquivos_do_gitignore(caminho_gitignore: Path, padroes_exclusao: lis
     return sorted(arquivos_py_encontrados), sorted(arquivos_outros_encontrados)
 
 def extrair_contexto_changelog(diretorio_projeto: Path) -> str:
+    """Busca e extrai de forma automatizada o conteúdo sob as tags '[Unreleased]' e '[WorkingAt]' no arquivo CHANGELOG.md."""
     changelog_path = diretorio_projeto / "CHANGELOG.md"
     print(f"🔍 Procurando CHANGELOG em: {changelog_path}")
 
@@ -297,7 +299,8 @@ def _copiar_saida(conteudo: str):
         print(f"⚠️ Não consegui copiar para o clipboard: {e}")
 
 def mapear_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, linhas_config: int = 20,
-                           excluir: list = None, copiar: bool = False):
+                       excluir: list = None, copiar: bool = False):
+    """Mapeia recursivamente os arquivos do projeto respeitando exclusões e o arquivo .gitignore, sintetizando a arquitetura."""
     print("\n🚀 --- INICIANDO PYRESUMIDOR --- 🚀")
     caminho_gitignore = Path(caminho_gitignore_str).resolve()
     diretorio_projeto = caminho_gitignore.parent
