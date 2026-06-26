@@ -96,7 +96,7 @@ class JanelaPrincipal(QMainWindow):
             "QPushButton {"
             "  background: #dcdcdc;"
             "  padding: 8px 12px;"
-            "  border: 1px solid #c0c0c0;"
+            "  border: none;"
             "  border-radius: 4px;"
             "  text-align: left;"
             "}"

@@ -52,3 +52,17 @@ def dir_projeto(gitignore_path: str) -> Path:
 def caminho_mapa(gitignore_path: str) -> Path:
     """Onde o Mapear grava o .md daquele projeto."""
     return dir_projeto(gitignore_path) / "mapa.md"
+
+
+def caminho_entrada_extrair(gitignore_path: str) -> Path:
+    """Onde a GUI grava a resposta da IA usada no Extrair (entrada do comando).
+
+    Persistir aqui atende ao requisito de histórico: a entrada de cada execução
+    sobrevive ao fechamento da janela e à limpeza do projeto-alvo.
+    """
+    return dir_projeto(gitignore_path) / "entrada_extrair.md"
+
+
+def caminho_saida_extrair(gitignore_path: str) -> Path:
+    """Onde o Extrair grava o Markdown com os trechos extraídos (saída do comando)."""
+    return dir_projeto(gitignore_path) / "extracao.md"

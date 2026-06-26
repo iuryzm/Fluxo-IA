@@ -89,31 +89,31 @@ class ExtratorAST(ast.NodeVisitor):
     visit_AsyncFunctionDef = visit_FunctionDef
 
 def extrair_json_de_texto(texto: str) -> dict:
-    """Procura e carrega o bloco JSON dentro de um texto (resposta da IA)."""
+    """Procura e carrega o bloco JSON dentro de um texto (resposta da IA).
+
+    Levanta ErroEntrada (sem sys.exit) quando não acha JSON ou ele é inválido —
+    os pontos de entrada do core convertem isso em Resultado*(sucesso=False).
+    """
+    cb = chr(96) * 3
     texto = texto.strip()
-
-    # 1. Tenta achar o bloco ```json ... ``` (Padrão)
+    # 1. Tenta achar o bloco ```json ... ``` (padrão)
     match = re.search(r'```json\s*(.*?)\s*```', texto, re.DOTALL | re.IGNORECASE)
-
     bloco_json = ""
     if match:
         bloco_json = match.group(1)
     else:
-        # 2. Fallback: Procura o primeiro '{' e o último '}' no texto
+        # 2. Fallback: primeiro '{' e último '}' do texto
         inicio = texto.find('{')
         fim = texto.rfind('}')
         if inicio != -1 and fim != -1:
-            bloco_json = texto[inicio:fim+1]
+            bloco_json = texto[inicio:fim + 1]
         else:
-            print("❌ Erro: Não foi possível encontrar chaves { } ou o bloco ```json no texto da resposta.")
-            sys.exit(1)
-
+            raise ErroEntrada(
+                f"Não encontrei chaves {{ }} nem um bloco {cb}json no texto da resposta.")
     try:
         return json.loads(bloco_json)
     except json.JSONDecodeError as e:
-        print(f"❌ Erro ao decodificar o JSON: {e}")
-        print(f"Trecho capturado que gerou erro:\n{bloco_json[:200]}...")
-        sys.exit(1)
+        raise ErroEntrada(f"Erro ao decodificar o JSON: {e} | Trecho: {bloco_json[:200]}")
 
 def extrair_json_da_resposta(caminho_resposta: Path) -> dict:
     """Lê o arquivo da resposta e extrai o bloco JSON."""

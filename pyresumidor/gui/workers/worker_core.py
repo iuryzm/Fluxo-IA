@@ -19,12 +19,19 @@ class WorkerCore(QObject):
         self._kwargs = kwargs
 
     def executar(self):
-        try:
-            resultado = self._funcao(*self._args, **self._kwargs)
-        except Exception as e:
-            self.falhou.emit(f"{type(e).__name__}: {e}")
-            return
-        self.concluiu.emit(resultado)
+            try:
+                resultado = self._funcao(*self._args, **self._kwargs)
+            except SystemExit as e:
+                # Defesa de fundo: se alguma função do core ainda usar sys.exit (em vez
+                # de devolver Resultado*/ErroEntrada), o SystemExit NÃO herda de Exception
+                # e mataria a thread silenciosamente, derrubando a janela. Convertemos em
+                # falha tratável. (A correção definitiva é o core não usar sys.exit.)
+                self.falhou.emit(f"o core encerrou inesperadamente (sys.exit: {e.code}).")
+                return
+            except BaseException as e:
+                self.falhou.emit(f"{type(e).__name__}: {e}")
+                return
+            self.concluiu.emit(resultado)
 
 
 def rodar_em_thread(dono, funcao, ao_concluir, ao_falhar, *args, **kwargs):
