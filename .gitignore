@@ -24,7 +24,21 @@
 !pyresumidor/core/resultados.py
 !pyresumidor/cli/__init__.py
 !pyresumidor/cli/main.py
+
+# GUI (Fase 2: esqueleto)
 !pyresumidor/gui/__init__.py
+!pyresumidor/gui/__main__.py
+!pyresumidor/gui/app.py
+!pyresumidor/gui/janela.py
+!pyresumidor/gui/modelos/__init__.py
+!pyresumidor/gui/modelos/projeto.py
+!pyresumidor/gui/paginas/__init__.py
+!pyresumidor/gui/paginas/base.py
+!pyresumidor/gui/paginas/identificar.py
+!pyresumidor/gui/paginas/mapear.py
+!pyresumidor/gui/paginas/extrair.py
+!pyresumidor/gui/paginas/aplicar.py
+!pyresumidor/gui/workers/__init__.py
 
 # Testes
 !tests/__init__.py
