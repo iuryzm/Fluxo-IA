@@ -1,8 +1,8 @@
-# Allowlist: ignora tudo, depois readiciona só o que faz parte do projeto.
+# Allowlist: ignora tudo, depois readiciona so o que faz parte do projeto.
 *
 
-# Deixa o git DESCER nas subpastas (necessário p/ readicionar arquivos dentro de
-# pyresumidor/). Termina em "/", então o mapear.py ignora esta linha de propósito.
+# Deixa o git DESCER nas subpastas. Termina em "/", entao o mapear.py ignora
+# esta linha de proposito (a condicao la e: nao terminar em "/").
 !*/
 
 # Raiz
@@ -10,6 +10,8 @@
 !CHANGELOG.md
 !LICENSE
 !README.md
+!pyproject.toml
+!conftest.py
 
 # Pacote
 !pyresumidor/__init__.py
@@ -23,3 +25,10 @@
 !pyresumidor/cli/__init__.py
 !pyresumidor/cli/main.py
 !pyresumidor/gui/__init__.py
+
+# Testes
+!tests/__init__.py
+!tests/conftest.py
+!tests/test_mapear.py
+!tests/test_extrator.py
+!tests/test_aplicador.py
