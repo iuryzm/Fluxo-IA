@@ -2,6 +2,7 @@ import ast
 import argparse
 import fnmatch
 from pathlib import Path
+from .resultados import ResultadoMapear, ErroEntrada
 import sys
 
 # O clipboard é opcional: sem ele, --copiar apenas avisa.
@@ -203,41 +204,31 @@ def extrair_arquivos_do_gitignore(caminho_gitignore: Path, padroes_exclusao: lis
     """Lê as negações (!) do .gitignore e separa em (arquivos_py, arquivos_outros).
 
     Arquivos que casam com `padroes_exclusao` (glob) ficam de fora do resumo.
+    Levanta ErroEntrada se não conseguir ler o .gitignore (sem sys.exit).
     """
     padroes_exclusao = padroes_exclusao or []
     diretorio_projeto = caminho_gitignore.parent
     arquivos_py_encontrados = set()
     arquivos_outros_encontrados = set()
-    n_excluidos = 0
 
     try:
         linhas = caminho_gitignore.read_text(encoding="utf-8").splitlines()
     except Exception as e:
-        print(f"❌ Erro fatal ao ler o arquivo .gitignore: {e}")
-        sys.exit(1)
-
-    print(f"📄 .gitignore lido com {len(linhas)} linhas.")
+        raise ErroEntrada(f"Erro fatal ao ler o arquivo .gitignore: {e}")
 
     for linha in linhas:
         linha = linha.strip()
         if linha.startswith('!') and not linha.endswith('/'):
             padrao = linha[1:]
-            arquivos_com_padrao = list(diretorio_projeto.glob(padrao))
-            print(f"  🔍 Procurando padrão: '{padrao}' -> Encontrou {len(arquivos_com_padrao)} arquivo(s)")
-
-            for arquivo_encontrado in arquivos_com_padrao:
+            for arquivo_encontrado in diretorio_projeto.glob(padrao):
                 if not arquivo_encontrado.is_file():
                     continue
                 if _deve_excluir(arquivo_encontrado, diretorio_projeto, padroes_exclusao):
-                    n_excluidos += 1
                     continue
                 if arquivo_encontrado.suffix == '.py':
                     arquivos_py_encontrados.add(arquivo_encontrado.resolve())
                 else:
                     arquivos_outros_encontrados.add(arquivo_encontrado.resolve())
-
-    if n_excluidos:
-        print(f"🚫 {n_excluidos} arquivo(s) excluído(s) do resumo pelos padrões.")
 
     return sorted(arquivos_py_encontrados), sorted(arquivos_outros_encontrados)
 
@@ -285,50 +276,46 @@ def extrair_contexto_changelog(diretorio_projeto: Path) -> str:
     resultado += "\n".join(trecho_extraido) + "\n"
     return resultado
 
-def _copiar_saida(conteudo: str):
-    """Copia o mapear para a área de transferência (se o clipboard estiver disponível)."""
+def _copiar_saida(conteudo: str) -> bool:
+    """Copia o mapa para a área de transferência. Retorna True se conseguiu copiar."""
     if clipboard is None:
-        print("⚠️ clipboard.py não encontrado ao lado deste script; --copiar ignorado.")
-        return
+        return False
     try:
         clipboard.copiar(conteudo)
-        print("📋 mapear copiado para a área de transferência (cole no chat da IA).")
-    except clipboard.ClipboardIndisponivel as e:
-        print(f"⚠️ Não consegui copiar para o clipboard: {e}")
+        return True
+    except clipboard.ClipboardIndisponivel:
+        return False
 
 def mapear_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, linhas_config: int = 20,
                        excluir: list = None, copiar: bool = False):
-    """Mapeia recursivamente os arquivos do projeto respeitando exclusões e o arquivo .gitignore, sintetizando a arquitetura."""
-    print("\n🚀 --- INICIANDO PYRESUMIDOR --- 🚀")
-    caminho_gitignore = Path(caminho_gitignore_str).resolve()
-    diretorio_projeto = caminho_gitignore.parent
+    """Mapeia recursivamente os arquivos do projeto respeitando exclusões e o .gitignore.
 
-    print(f"📂 Diretório do projeto: {diretorio_projeto}")
-    print(f"📄 Caminho do gitignore: {caminho_gitignore}")
-
-    if not caminho_gitignore.exists():
-        print(f"❌ Erro: O arquivo '{caminho_gitignore}' não foi encontrado.")
-        sys.exit(1)
-
-    padroes_exclusao = carregar_padroes_exclusao(diretorio_projeto, excluir)
-    arquivos_py, arquivos_outros = extrair_arquivos_do_gitignore(caminho_gitignore, padroes_exclusao)
+    Retorna ResultadoMapear: não imprime nem encerra o processo (quem apresenta é a CLI).
+    """
+    cb = chr(96) * 3
+    try:
+        caminho_gitignore = Path(caminho_gitignore_str).resolve()
+        diretorio_projeto = caminho_gitignore.parent
+        if not caminho_gitignore.exists():
+            raise ErroEntrada(f"O arquivo '{caminho_gitignore}' não foi encontrado.")
+        padroes_exclusao = carregar_padroes_exclusao(diretorio_projeto, excluir)
+        arquivos_py, arquivos_outros = extrair_arquivos_do_gitignore(caminho_gitignore, padroes_exclusao)
+    except ErroEntrada as e:
+        return ResultadoMapear(sucesso=False, conteudo="", caminho_saida=None,
+                               arquivos_py=[], arquivos_outros=[], linhas_por_arquivo={},
+                               total_linhas=0, copiado=False, erros=[str(e)])
 
     if not arquivos_py and not arquivos_outros:
-        print("⚠️ Nenhum arquivo válido foi encontrado. Abortando.")
-        sys.exit(0)
+        return ResultadoMapear(sucesso=True, conteudo="", caminho_saida=None,
+                               arquivos_py=[], arquivos_outros=[], linhas_por_arquivo={},
+                               total_linhas=0, copiado=False,
+                               avisos=["Nenhum arquivo válido foi encontrado."])
 
-    print(f"\n⚙️ Processando {len(arquivos_py)} arquivos .py e {len(arquivos_outros)} arquivos de config/outros...")
-
-    mapear_completo = ["# Resumo da Arquitetura do Projeto\n"]
-    mapear_completo.append("---\n")
-
-    # --- Seção 1: Arquivos Python ---
+    mapear_completo = ["# Resumo da Arquitetura do Projeto\n", "---\n"]
     for arquivo in arquivos_py:
-        resumo_arquivo = processar_arquivo_py(arquivo, diretorio_projeto)
-        mapear_completo.append(resumo_arquivo)
+        mapear_completo.append(processar_arquivo_py(arquivo, diretorio_projeto))
         mapear_completo.append("\n---\n")
 
-    # --- Seção 2: Arquivos de Configuração e Outros ---
     if arquivos_outros:
         mapear_completo.append("\n# ⚙️ Arquivos de Configuração e Outros\n")
         mapear_completo.append(
@@ -337,8 +324,7 @@ def mapear_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, linha
         )
         mapear_completo.append("---\n")
         for arquivo in arquivos_outros:
-            resumo_arquivo = processar_arquivo_outro(arquivo, diretorio_projeto, linhas_config)
-            mapear_completo.append(resumo_arquivo)
+            mapear_completo.append(processar_arquivo_outro(arquivo, diretorio_projeto, linhas_config))
             mapear_completo.append("\n---\n")
 
     instrucoes_ia = (
@@ -348,7 +334,7 @@ def mapear_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, linha
         "Para que o script de extração automática do usuário funcione, você **DEVE** incluir em sua resposta um bloco "
         "de código contendo um objeto JSON estrito com o mapeamento do que você precisa.\n\n"
         "Siga EXATAMENTE este formato:\n\n"
-        "```json\n"
+        + cb + "json\n"
         "{\n"
         "  \"arquivos_completos\": [\n"
         "    \"caminho/relativo/do/arquivo1.py\",\n"
@@ -361,7 +347,7 @@ def mapear_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, linha
         "    \"caminho/relativo/do/arquivo3.py\": [\"nome_da_funcao\", \"outra_funcao\", \"NomeDaClasse.nome_do_metodo\"]\n"
         "  }\n"
         "}\n"
-        "```\n\n"
+        + cb + "\n\n"
         "**Regras do JSON:**\n"
         "1. Use as chaves `\"arquivos_completos\"`, `\"classes\"` e `\"funcoes\"`.\n"
         "2. Se não precisar de itens para uma das chaves, deixe a lista ou o dicionário vazio (ex: `\"arquivos_completos\": []`).\n"
@@ -375,27 +361,46 @@ def mapear_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, linha
         "ele é ambíguo (pode existir em várias classes) e não casa. Para a classe inteira, "
         "continue usando `\"classes\"`.\n"
     )
-
     mapear_completo.append(instrucoes_ia)
 
-    # Verifica o CHANGELOG
-    print("\n🔍 Analisando CHANGELOG...")
     contexto_changelog = extrair_contexto_changelog(diretorio_projeto)
     if contexto_changelog:
         mapear_completo.append(contexto_changelog)
 
     conteudo = "\n".join(mapear_completo)
-    arquivo_saida = Path(arquivo_saida_str).resolve()
-    print(f"\n💾 Salvando resultado em: {arquivo_saida}")
 
+    def _rel(a):
+        try:
+            return str(a.relative_to(diretorio_projeto))
+        except ValueError:
+            return str(a)
+
+    linhas_por_arquivo = {}
+    for arquivo in list(arquivos_py) + list(arquivos_outros):
+        rel = _rel(arquivo)
+        try:
+            linhas_por_arquivo[rel] = len(arquivo.read_text(encoding="utf-8", errors="replace").splitlines())
+        except Exception:
+            linhas_por_arquivo[rel] = 0
+    total_linhas = sum(linhas_por_arquivo.values())
+
+    rel_py = [_rel(a) for a in arquivos_py]
+    rel_outros = [_rel(a) for a in arquivos_outros]
+
+    arquivo_saida = Path(arquivo_saida_str).resolve()
     try:
         arquivo_saida.write_text(conteudo, encoding="utf-8")
-        print(f"✅ mapear gerado com sucesso!")
     except Exception as e:
-        print(f"❌ Erro ao salvar o arquivo: {e}")
+        return ResultadoMapear(sucesso=False, conteudo=conteudo, caminho_saida=None,
+                               arquivos_py=rel_py, arquivos_outros=rel_outros,
+                               linhas_por_arquivo=linhas_por_arquivo, total_linhas=total_linhas,
+                               copiado=False, erros=[f"Erro ao salvar o arquivo: {e}"])
 
-    if copiar:
-        _copiar_saida(conteudo)
+    copiado = _copiar_saida(conteudo) if copiar else False
+    return ResultadoMapear(sucesso=True, conteudo=conteudo, caminho_saida=str(arquivo_saida),
+                           arquivos_py=rel_py, arquivos_outros=rel_outros,
+                           linhas_por_arquivo=linhas_por_arquivo, total_linhas=total_linhas,
+                           copiado=copiado)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Gera um resumo do código Python baseado no .gitignore.")

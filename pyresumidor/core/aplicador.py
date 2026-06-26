@@ -6,6 +6,7 @@ import textwrap
 import difflib
 import shutil
 from pathlib import Path
+from .resultados import ResultadoAplicar, ResultadoArquivoAplicado, ErroEntrada
 from collections import defaultdict
 import sys
 import html
@@ -136,11 +137,12 @@ busca da âncora cobre o arquivo inteiro (não há nó AST para delimitar).
 
 
 def carregar_plano(texto: str) -> dict:
-    """Extrai o bloco json com o plano de operações da resposta da IA."""
-    # Tenta achar o bloco com 4 crases
+    """Extrai o bloco json com o plano de operações da resposta da IA.
+
+    Levanta ErroEntrada em falha (sem sys.exit).
+    """
     match = re.search(rf'{B4}json\s*(.*?)\s*{B4}', texto, re.DOTALL | re.IGNORECASE)
     if not match:
-        # Fallback para 3 crases
         match = re.search(rf'{B3}json\s*(.*?)\s*{B3}', texto, re.DOTALL | re.IGNORECASE)
 
     if match:
@@ -150,14 +152,11 @@ def carregar_plano(texto: str) -> dict:
         if inicio != -1 and fim != -1:
             bloco = texto[inicio:fim + 1]
         else:
-            print(f"❌ Não encontrei um bloco {B4}json (plano) na resposta da IA.")
-            sys.exit(1)
+            raise ErroEntrada(f"Não encontrei um bloco {B4}json (plano) na resposta da IA.")
     try:
         return json.loads(bloco)
     except json.JSONDecodeError as e:
-        print(f"❌ Erro ao decodificar o JSON do plano: {e}")
-        print(f"Trecho:\n{bloco[:200]}...")
-        sys.exit(1)
+        raise ErroEntrada(f"Erro ao decodificar o JSON do plano: {e} | Trecho: {bloco[:200]}...")
 
 
 def indexar_blocos_codigo(texto: str) -> dict:
@@ -672,120 +671,94 @@ def aplicar_em_arquivo(rel: str, alvo: Path, ops: list, blocos: dict) -> tuple:
 
 
 def executar(resposta_path_str: str, projeto_path_str: str,
-             aplicar: bool, diff_path_str: str, sem_backup: bool, html_diff=None, colar=False):
-    """Orquestra o carregamento e aplicação do plano de operações, exibindo os diffs com colorização no console."""
-    projeto_path = Path(projeto_path_str).resolve()
+             aplicar: bool, diff_path_str: str, sem_backup: bool, colar: bool = False):
+    """Carrega e aplica (ou simula) o plano de operações.
 
-    if colar:
-        if clipboard is None:
-            print("\033[31m❌ clipboard.py não encontrado ao lado deste script; não dá para usar --colar.\033[0m")
-            sys.exit(1)
-        try:
-            texto = clipboard.colar()
-        except clipboard.ClipboardIndisponivel as e:
-            print(f"\033[31m❌ Não consegui ler a área de transferência: {e}\033[0m")
-            sys.exit(1)
-        print("📋 Lendo a resposta da IA da área de transferência...")
-    else:
-        resposta_path = Path(resposta_path_str).resolve()
-        if not resposta_path.exists():
-            print(f"\033[31m❌ Arquivo com a resposta da IA não encontrado: {resposta_path}\033[0m")
-            sys.exit(1)
-        texto = resposta_path.read_text(encoding="utf-8", errors="replace")
-    plano = carregar_plano(texto)
+    Retorna ResultadoAplicar: faz as mutações de arquivo (gravar/.bak/patch), mas
+    NÃO imprime, não abre navegador e não encerra o processo. Render de console,
+    HTML e browser são responsabilidade da CLI.
+    """
+    projeto_path = Path(projeto_path_str).resolve()
+    avisos = []
+
+    try:
+        if colar:
+            if clipboard is None:
+                raise ErroEntrada("clipboard indisponível; não dá para usar --colar.")
+            try:
+                texto = clipboard.colar()
+            except clipboard.ClipboardIndisponivel as e:
+                raise ErroEntrada(f"Não consegui ler a área de transferência: {e}")
+        else:
+            resposta_path = Path(resposta_path_str).resolve()
+            if not resposta_path.exists():
+                raise ErroEntrada(f"Arquivo com a resposta da IA não encontrado: {resposta_path}")
+            texto = resposta_path.read_text(encoding="utf-8", errors="replace")
+        plano = carregar_plano(texto)
+    except ErroEntrada as e:
+        return ResultadoAplicar(sucesso=False, aplicado=aplicar, arquivos=[],
+                                total_adicionadas=0, total_removidas=0,
+                                caminho_patch=None, caminho_html=None, erros=[str(e)])
+
     blocos = indexar_blocos_codigo(texto)
     operacoes = plano.get("operacoes", [])
 
     if not operacoes:
-        print("\033[33m⚠️ Nenhuma operação encontrada no plano (chave 'operacoes' vazia).\033[0m")
-        sys.exit(0)
-
-    print(f"\033[36m🔧 {len(operacoes)} operação(ões) no plano · {len(blocos)} bloco(s) de código encontrados.\033[0m")
-    print(f"📂 Projeto: {projeto_path}")
-    print(f"\033[1;32m✍️  MODO APLICAR (vai gravar)\033[0m" if aplicar else f"\033[1;33m👀 MODO DRY-RUN (nada será gravado)\033[0m")
-    print()
+        return ResultadoAplicar(sucesso=True, aplicado=aplicar, arquivos=[],
+                                total_adicionadas=0, total_removidas=0,
+                                caminho_patch=None, caminho_html=None,
+                                avisos=["Nenhuma operação encontrada no plano (chave 'operacoes' vazia)."])
 
     por_arquivo = defaultdict(list)
     for op in operacoes:
         rel = op.get("arquivo")
         if not rel:
-            print("\033[33m⚠️ Operação sem 'arquivo' — ignorada.\033[0m")
+            avisos.append("Operação sem 'arquivo' — ignorada.")
             continue
         por_arquivo[rel].append(op)
 
+    arquivos_result = []
     todos_diffs = []
-    diffs_arquivos = []  # (rel, diff) para o render HTML
-    total_erros = []
+    total_add = total_del = 0
 
     for rel, ops in por_arquivo.items():
         alvo = projeto_path / rel
         original, novo, erros = aplicar_em_arquivo(rel, alvo, ops, blocos)
-        total_erros.extend(erros)
-
         diff = _gerar_diff(rel, original, novo)
+        add = dels = 0
+        gravado = False
+        backup_criado = False
+
         if diff:
+            add, dels = _contar_mudancas(diff)
             todos_diffs.append(diff)
-            diffs_arquivos.append((rel, diff))
-            print(f"\033[1;34m📝 {rel}\033[0m")
-
-            # Realiza a colorização linha por linha do diff unificado estrutural
-            for linha in diff.splitlines():
-                if linha.startswith("+") and not linha.startswith("+++"):
-                    print(f"\033[32m{linha}\033[0m")
-                elif linha.startswith("-") and not linha.startswith("---"):
-                    print(f"\033[31m{linha}\033[0m")
-                elif linha.startswith("@@"):
-                    print(f"\033[36m{linha}\033[0m")
-                else:
-                    print(linha)
-
             if aplicar:
                 if alvo.exists() and not sem_backup:
                     shutil.copy2(alvo, alvo.with_suffix(alvo.suffix + ".bak"))
+                    backup_criado = True
                 alvo.parent.mkdir(parents=True, exist_ok=True)
                 conteudo = novo if novo.endswith("\n") else novo + "\n"
                 alvo.write_text(conteudo, encoding="utf-8")
-                print(f"   \033[32m✅ gravado{'' if sem_backup else ' (backup .bak criado)'}\033[0m\n")
-            else:
-                print()
-        else:
-            print(f"➖ {rel}: nenhuma mudança gerada.\n")
+                gravado = True
 
+        total_add += add
+        total_del += dels
+        arquivos_result.append(ResultadoArquivoAplicado(
+            caminho=rel, adicionadas=add, removidas=dels, diff=diff,
+            gravado=gravado, backup_criado=backup_criado, erros=erros))
+
+    caminho_patch = None
     if diff_path_str and todos_diffs:
-        Path(diff_path_str).write_text("\n".join(todos_diffs) + "\n", encoding="utf-8")
-        print(f"\033[32m💾 Patch combinado salvo em: {diff_path_str}\033[0m")
-        print(f"   Aplicar com Git:   git apply {diff_path_str}")
-        print(f"   Conferir antes:    git apply --check {diff_path_str}")
+        try:
+            Path(diff_path_str).write_text("\n".join(todos_diffs) + "\n", encoding="utf-8")
+            caminho_patch = str(Path(diff_path_str).resolve())
+        except Exception as e:
+            avisos.append(f"Não consegui salvar o patch combinado: {e}")
 
-    if total_erros:
-        print("\n\033[1;31m⚠️ Avisos/erros:\033[0m")
-        for e in total_erros:
-            print(f"   \033[31m- {e}\033[0m")
-
-    if html_diff is not None:
-        if diffs_arquivos or total_erros:
-            pagina = _gerar_html_diff(diffs_arquivos, projeto_path, aplicar, total_erros)
-            if html_diff:  # caminho explícito informado pelo usuário
-                destino = Path(html_diff).resolve()
-                destino.parent.mkdir(parents=True, exist_ok=True)
-            else:          # sem valor: usa um arquivo temporário
-                tmp = tempfile.NamedTemporaryFile(prefix="aplicador_diff_", suffix=".html", delete=False)
-                tmp.close()
-                destino = Path(tmp.name)
-            destino.write_text(pagina, encoding="utf-8")
-            print(f"\n🌐 Diff em HTML salvo em: {destino}")
-            try:
-                if webbrowser.open(destino.as_uri()):
-                    print("   Abrindo no navegador...")
-                else:
-                    print("   (não consegui abrir um navegador; abra o arquivo acima manualmente.)")
-            except Exception:
-                print("   (não consegui abrir um navegador; abra o arquivo acima manualmente.)")
-        else:
-            print("\n🌐 --html-diff: nada para mostrar (nenhuma mudança gerada).")
-
-    if not aplicar and todos_diffs:
-        print("\n\033[33mℹ️ Isto foi um dry-run. Use --aplicar para gravar, ou --diff arquivo.patch para salvar o patch.\033[0m")
+    return ResultadoAplicar(sucesso=True, aplicado=aplicar, arquivos=arquivos_result,
+                            total_adicionadas=total_add, total_removidas=total_del,
+                            caminho_patch=caminho_patch, caminho_html=None,
+                            avisos=avisos)
 
 
 if __name__ == "__main__":

@@ -65,3 +65,12 @@ class ResultadoAplicar:
     caminho_html: str | None     # CLI ainda pode gerar; GUI ignora e usa os diffs
     erros: list[str] = field(default_factory=list)
     avisos: list[str] = field(default_factory=list)
+
+
+class ErroEntrada(Exception):
+    """Erro de entrada/parse no pipeline.
+
+    Os pontos de entrada do core capturam isto e convertem em
+    Resultado*(sucesso=False, erros=[...]). O core NUNCA usa sys.exit.
+    """
+    pass

@@ -3,6 +3,7 @@ import json
 import re
 import argparse
 from pathlib import Path
+from .resultados import ResultadoExtrair, ItemExtraido, ErroEntrada
 import sys
 
 try:
@@ -118,8 +119,15 @@ def extrair_json_da_resposta(caminho_resposta: Path) -> dict:
     """Lê o arquivo da resposta e extrai o bloco JSON."""
     return extrair_json_de_texto(caminho_resposta.read_text(encoding="utf-8"))
 
-def processar_arquivo(caminho_arquivo: Path, classes_alvo: list, funcoes_alvo: list) -> str:
-    """Usa o AST para extrair apenas as partes solicitadas de um arquivo."""
+def processar_arquivo(caminho_arquivo: Path, classes_alvo: list, funcoes_alvo: list):
+    """Usa o AST para extrair apenas as partes solicitadas de um arquivo.
+
+    Retorna (markdown, n_encontrados). O n_encontrados deixa o chamador saber, em
+    nível de arquivo, quantos dos nós pedidos casaram — alimenta o resultado
+    estruturado sem precisar raspar a string. (Quais nós casaram, individualmente,
+    fica para quando o ExtratorAST reportar isso.)
+    """
+    cb = chr(96) * 3
     try:
         source_code = caminho_arquivo.read_text(encoding="utf-8")
         arvore = ast.parse(source_code)
@@ -128,104 +136,136 @@ def processar_arquivo(caminho_arquivo: Path, classes_alvo: list, funcoes_alvo: l
         visitante.visit(arvore)
 
         if not visitante.codigo_extraido:
-            return f"⚠️ Nenhuma das classes/funções solicitadas foi encontrada em `{caminho_arquivo.name}`.\n"
+            return (f"⚠️ Nenhuma das classes/funções solicitadas foi encontrada em `{caminho_arquivo.name}`.\n", 0)
 
         resultado = ""
         for nome, tipo, codigo in visitante.codigo_extraido:
-            resultado += f"\n#### {tipo}: `{nome}`\n```python\n{codigo}\n```\n"
-        return resultado
+            resultado += f"\n#### {tipo}: `{nome}`\n{cb}python\n{codigo}\n{cb}\n"
+        return (resultado, len(visitante.codigo_extraido))
 
     except Exception as e:
-        return f"⚠️ Erro ao processar `{caminho_arquivo.name}`: {e}\n"
+        return (f"⚠️ Erro ao processar `{caminho_arquivo.name}`: {e}\n", 0)
 
 def _obter_texto_resposta(resposta_path_str: str, colar: bool) -> dict:
-    """Decide a origem da resposta da IA: clipboard (--colar) ou arquivo, e devolve o JSON."""
+    """Decide a origem da resposta da IA: clipboard (--colar) ou arquivo, e devolve o JSON.
+
+    Levanta ErroEntrada em falha (sem sys.exit).
+    """
     if colar:
         if clipboard is None:
-            print("❌ clipboard.py não encontrado ao lado deste script; não dá para usar --colar.")
-            sys.exit(1)
+            raise ErroEntrada("clipboard indisponível; não dá para usar --colar.")
         try:
             texto = clipboard.colar()
         except clipboard.ClipboardIndisponivel as e:
-            print(f"❌ Não consegui ler a área de transferência: {e}")
-            sys.exit(1)
-        print("📋 Lendo a resposta da IA da área de transferência...")
+            raise ErroEntrada(f"Não consegui ler a área de transferência: {e}")
         return extrair_json_de_texto(texto)
 
     resposta_path = Path(resposta_path_str).resolve()
     if not resposta_path.exists():
-        print(f"Erro: Arquivo com a resposta da IA não encontrado ({resposta_path})")
-        sys.exit(1)
-    print("🔍 Lendo as requisições da IA...")
+        raise ErroEntrada(f"Arquivo com a resposta da IA não encontrado ({resposta_path})")
     return extrair_json_da_resposta(resposta_path)
 
 def executar_extracao(resposta_path_str: str, projeto_path_str: str, saida_path_str: str,
                       incluir_instrucoes: bool = True, colar: bool = False, copiar: bool = False):
-    """Lê os requisitos estruturais da resposta da IA, extrai as classes e funções pedidas e grava o arquivo Markdown de saída."""
+    """Lê os requisitos da IA, extrai classes/funções e grava o Markdown de saída.
+
+    Retorna ResultadoExtrair: não imprime nem encerra o processo.
+    """
+    cb = chr(96) * 3
     projeto_path = Path(projeto_path_str).resolve()
 
-    requisicoes = _obter_texto_resposta(resposta_path_str, colar)
+    try:
+        requisicoes = _obter_texto_resposta(resposta_path_str, colar)
+    except ErroEntrada as e:
+        return ResultadoExtrair(sucesso=False, conteudo="", caminho_saida=None,
+                                itens=[], total_linhas_extraidas=0,
+                                instrucoes_anexadas=False, copiado=False, erros=[str(e)])
 
     md_saida = ["# Código Extraído para a IA\n\n"]
+    itens = []
+    avisos = []
 
-    # 1. Arquivos Completos
-    arquivos_completos = requisicoes.get("arquivos_completos", [])
-    for caminho_relativo in arquivos_completos:
+    # 1. Arquivos completos (encontrado confiável: existe no disco)
+    for caminho_relativo in requisicoes.get("arquivos_completos", []):
         arquivo_alvo = projeto_path / caminho_relativo
         md_saida.append(f"### 📄 Arquivo Completo: `{caminho_relativo}`\n")
-        if arquivo_alvo.exists():
+        existe = arquivo_alvo.exists()
+        if existe:
             codigo = arquivo_alvo.read_text(encoding="utf-8")
-            md_saida.append(f"```python\n{codigo}\n```\n")
+            md_saida.append(f"{cb}python\n{codigo}\n{cb}\n")
         else:
-            md_saida.append(f"*⚠️ Arquivo não encontrado no projeto.*\n")
+            md_saida.append("*⚠️ Arquivo não encontrado no projeto.*\n")
         md_saida.append("---\n")
+        itens.append(ItemExtraido(caminho=caminho_relativo, tipo="arquivo", nome=None, encontrado=existe))
 
-    # 2. Classes e Funções
+    # 2. Classes e funções
     dicionario_classes = requisicoes.get("classes", {})
     dicionario_funcoes = requisicoes.get("funcoes", {})
-
-    # Junta todos os caminhos de arquivos que precisamos abrir
     todos_arquivos = set(list(dicionario_classes.keys()) + list(dicionario_funcoes.keys()))
 
     for caminho_relativo in todos_arquivos:
         arquivo_alvo = projeto_path / caminho_relativo
         md_saida.append(f"### ✂️ Trechos Extraídos: `{caminho_relativo}`")
 
-        if arquivo_alvo.exists():
-            classes_alvo = dicionario_classes.get(caminho_relativo, [])
-            funcoes_alvo = dicionario_funcoes.get(caminho_relativo, [])
+        classes_alvo = dicionario_classes.get(caminho_relativo, [])
+        funcoes_alvo = dicionario_funcoes.get(caminho_relativo, [])
+        pedidos = [("classe", n) for n in classes_alvo] + [("funcao", n) for n in funcoes_alvo]
 
-            trechos = processar_arquivo(arquivo_alvo, classes_alvo, funcoes_alvo)
+        if arquivo_alvo.exists():
+            trechos, n_encontrados = processar_arquivo(arquivo_alvo, classes_alvo, funcoes_alvo)
             md_saida.append(trechos)
+            # Honesto: só afirmamos "encontrado" por item quando TODOS casaram.
+            todos_casaram = (n_encontrados > 0 and n_encontrados == len(pedidos))
+            for tipo, nome in pedidos:
+                itens.append(ItemExtraido(caminho=caminho_relativo, tipo=tipo, nome=nome, encontrado=todos_casaram))
+            if 0 < n_encontrados < len(pedidos):
+                avisos.append(f"{caminho_relativo}: {n_encontrados}/{len(pedidos)} item(ns) localizado(s); "
+                              "ainda não dá para dizer individualmente quais (melhoria futura no extrator).")
         else:
-            md_saida.append(f"\n*⚠️ Arquivo não encontrado no projeto.*\n")
+            md_saida.append("\n*⚠️ Arquivo não encontrado no projeto.*\n")
+            for tipo, nome in pedidos:
+                itens.append(ItemExtraido(caminho=caminho_relativo, tipo=tipo, nome=nome, encontrado=False))
         md_saida.append("---\n")
 
-    # 3. Instruções para a próxima resposta da IA (consumida pelo aplicador.py).
-    # Anexa o guia de formato (plano + blocos de código) ao fim da saída, para que
-    # a IA já saiba como devolver a solução sem você rodar `aplicador.py --instrucoes`.
+    # 3. Instruções do aplicador
+    instrucoes_anexadas = False
     if incluir_instrucoes:
         if INSTRUCOES_IA:
             md_saida.append("\n---\n")
             md_saida.append(INSTRUCOES_IA)
+            instrucoes_anexadas = True
         else:
-            print("⚠️ Não encontrei o aplicador.py ao lado do extrator.py; as instruções "
-                  "de aplicação NÃO foram anexadas. Use --sem-instrucoes para silenciar este aviso.")
+            avisos.append("INSTRUCOES_IA do aplicador indisponível; instruções NÃO anexadas.")
 
     conteudo = "\n".join(md_saida)
-    Path(saida_path_str).write_text(conteudo, encoding="utf-8")
-    sufixo = " (com instruções do aplicador anexadas)" if (incluir_instrucoes and INSTRUCOES_IA) else ""
-    print(f"✅ Extração concluída! Arquivo gerado em: {saida_path_str}{sufixo}")
+    # NB: total_linhas_extraidas = tamanho do md gerado (linhas de código por nó
+    # ficam para quando o extrator reportar isso).
+    total_linhas = len(conteudo.splitlines())
 
+    try:
+        Path(saida_path_str).write_text(conteudo, encoding="utf-8")
+    except Exception as e:
+        return ResultadoExtrair(sucesso=False, conteudo=conteudo, caminho_saida=None,
+                                itens=itens, total_linhas_extraidas=total_linhas,
+                                instrucoes_anexadas=instrucoes_anexadas, copiado=False,
+                                erros=[f"Erro ao salvar a saída: {e}"], avisos=avisos)
+
+    copiado = False
     if copiar:
         if clipboard is None:
-            print("⚠️ clipboard.py não encontrado ao lado deste script; --copiar ignorado.")
+            avisos.append("clipboard indisponível; --copiar ignorado.")
         else:
             try:
                 clipboard.copiar(conteudo)
-                print("📋 Código extraído copiado para a área de transferência (cole no chat da IA).")
+                copiado = True
             except clipboard.ClipboardIndisponivel as e:
-                print(f"⚠️ Não consegui copiar para o clipboard: {e}")
+                avisos.append(f"Não consegui copiar: {e}")
+
+    return ResultadoExtrair(sucesso=True, conteudo=conteudo,
+                            caminho_saida=str(Path(saida_path_str).resolve()),
+                            itens=itens, total_linhas_extraidas=total_linhas,
+                            instrucoes_anexadas=instrucoes_anexadas, copiado=copiado,
+                            avisos=avisos)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extrai código-fonte baseado em um JSON da IA.")
