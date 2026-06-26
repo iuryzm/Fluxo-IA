@@ -14,24 +14,79 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - Estender a lógica de exclusão (`--excluir` / `.resumoignore`) ao `extrator.py`,
   para que arquivos fora do mapa também não possam ser pedidos por caminho — hoje
   só o `mapear.py` aplica os padrões.
+- Precisão por nome em `ItemExtraido.encontrado`: hoje o `extrator.py` só sabe
+  *quantos* nós casaram (não *quais*), então o campo só é marcado quando todos os
+  itens pedidos de um arquivo são localizados. Reportar isso por nó depende de
+  expor o resultado no `ExtratorAST`.
+- Possibilitar a IA de alterar o CHANGELOG.md também.
 - Docstrings are important.
 - 1º monte um plano de trabalho. Depois iremos executar.
 
 ## [WorkingAt]
-- Definir as especificações da interface gráfica para o main.py e todas suas funções.
-  - Pensei em usar PySide6.
-  - Fazer um menu lateral com os botões Identificar Projeto, Mapear, Extrair e Aplicar que nos leva para a tela de cada uma dessas funções.
-  - Usar MVC para a interface de cada botão vale a pena?
-  - Se achar adequado podemor renomear e/ou reorganizar os arquivos em novas pastas.
-  - Fazer um sistema de aba superior que dê para adicionar ou remover as abas e em cada abas estaremos num projeto diferente.
-  - Seria interessante pordermos gravar em cada projeto os ultimos comandos realizados, tanto suas entradas quanto suas saídas.
-  - Também seria interessante termo um salvar e carregar os projetos para facilitar para o usuário não ter que configurar tudo novamente para cada projeto.
-  - Como forma de estatística seria legal armazenarmos em cada projeto quantas vezes usamos cada comando, quantas linhas de código (ou outra informação interessante sobre estatística de código) já foi alterada ou lida ou apagada
-  - Seria possível ao mapear o projeto totalizarmos quantas linhas cada arquivo do projeto possui (ou/e outra estatística) e quantas linhas no total o projeto possui para podermos fazer um gráfico de evolução do tamanho do projeto.
-  - Aceito sugestões.
+- Construir a camada de GUI (PySide6), isolada em `pyresumidor/gui/` — o core
+  permanece zero-dependência e a CLI segue funcionando sozinha.
+- **Arquitetura travada:** um menu lateral e um `QStackedWidget` de páginas
+  *compartilhados*; abas no topo representam projetos e só trocam qual objeto
+  `Projeto` as páginas leem/escrevem. Quatro páginas: Identificar, Mapear,
+  Extrair, Aplicar.
+- Separação leve (não MVC formal por tela): `Projeto` como model, página como
+  view, controller fino disparando o core numa *worker thread* (`QThread`/
+  `QRunnable`) para não travar a UI. Promover uma tela a presenter só se ela
+  crescer demais.
+- A GUI **não** conversa com IA: orquestra o vaivém clipboard/arquivo
+  (Identificar → Mapear → cola resposta → Extrair → cola resposta → Aplicar),
+  consumindo os objetos `Resultado*` que o core agora devolve.
+- **Próximo passo (Fase 2):** esqueleto — janela, abas de projeto, menu lateral
+  e as quatro páginas como stubs, sem ligação com o backend ainda.
+- A seguir: persistência de projeto (salvar/carregar, recentes, histórico de
+  comandos), estatísticas por comando e gráfico de evolução do tamanho do
+  projeto via QtCharts (sem QtWebEngine).
 
 ## [Unreleased]
-- No itens.
+- Sem itens.
+
+## [1.4.0] - 2026.06.26
+### Added
+- **Pacote instalável `pyresumidor`**: o projeto deixou de ser um conjunto de
+  scripts soltos e passou a um pacote Python com a estrutura `core/` (lógica
+  zero-dependência), `cli/` (interface de linha de comando) e `gui/` (reservada
+  para a interface gráfica). Entrada por `python -m pyresumidor` e, quando
+  instalado, pelo comando `pyresumidor`.
+- **Objetos de resultado estruturado (`core/resultados.py`)**: `ResultadoMapear`,
+  `ResultadoExtrair` (com `ItemExtraido`), `ResultadoAplicar` (com
+  `ResultadoArquivoAplicado`) e a exceção `ErroEntrada`. Os pontos de entrada do
+  core agora devolvem esses dataclasses em vez de imprimir e encerrar o processo —
+  base para a futura GUI consumir o mesmo backend que a CLI.
+- **`ResultadoMapear` contabiliza linhas por arquivo e total do projeto**, insumo
+  direto para o futuro gráfico de evolução do tamanho do projeto.
+- **`pyproject.toml`**: metadados do pacote, `requires-python >= 3.9` e grupos de
+  dependência opcionais — `dev` (`pytest`) e `gui` (`PySide6`). O core de runtime
+  permanece sem dependências externas; pytest e PySide6 nunca entram nos
+  requisitos de quem só usa o toolkit.
+- **Suíte de testes (`tests/`, pytest)**: 14 testes cobrindo o contrato dos
+  objetos de resultado, contagem de linhas, exclusão de arquivos, erro-como-dado
+  (entrada ausente vira `sucesso=False`/`erros`), e regressões nomeadas —
+  preservação de decorador na extração, desambiguação da notação `"Classe.metodo"`
+  e o guarda-corpo que recusa gravar `.py` com sintaxe inválida.
+
+### Changed
+- **Pontos de entrada do core não usam mais `sys.exit` nem `print` para comunicar
+  resultado**: `mapear_repositorio`, `executar_extracao` e `aplicador.executar`
+  retornam um objeto `Resultado*`; falhas de entrada viram `ErroEntrada` capturada
+  e transformada em dado (`sucesso=False`, `erros=[...]`). A apresentação no
+  console (cores ANSI, abertura do navegador para o `--html-diff`) e a definição do
+  código de saída do processo passaram a ser responsabilidade exclusiva da camada
+  `cli/`.
+- **Invocação pela linha de comando**: `python main.py <comando>` foi aposentado em
+  favor de `python -m pyresumidor <comando>`. Os subcomandos, argumentos e flags
+  permanecem idênticos — nenhuma mudança no comportamento para o usuário final.
+- **Imports internos** passaram a ser relativos ao pacote (`from . import ...`),
+  eliminando a antiga descoberta por `sys.path` (o "clipboard ao lado deste
+  script"); a resolução do `clipboard` e de `INSTRUCOES_IA` agora é determinística,
+  mantendo a degradação graciosa quando o módulo opcional está ausente.
+- **`extrator.processar_arquivo`** passou a retornar `(markdown, n_encontrados)`
+  em vez de só o Markdown, permitindo ao chamador saber quantos dos nós pedidos
+  casaram sem inspecionar a string de saída.
 
 ## [1.3.0] - 2026.06.25
 ### Added
@@ -167,7 +222,7 @@ Primeira versão documentada do fluxo **Mapear · Extrair · Aplicar**.
 - Suporte às chaves `arquivos_completos`, `classes` e `funcoes`.
 - Recorte de classes e funções/métodos individuais via AST, sem precisar enviar
   o arquivo inteiro.
-- Fallback de parsing do JSON: tenta o bloco ```` ```json ````; se falhar,
+- Fallback de parsing do JSON: tenta o bloco ` ```json `; se falhar,
   procura o primeiro `{` e o último `}` do texto.
 
 #### `aplicador.py`
