@@ -22,10 +22,11 @@
 !pyresumidor/core/aplicador.py
 !pyresumidor/core/clipboard.py
 !pyresumidor/core/resultados.py
+!pyresumidor/core/armazenamento.py
 !pyresumidor/cli/__init__.py
 !pyresumidor/cli/main.py
 
-# GUI (Fase 2: esqueleto)
+# GUI
 !pyresumidor/gui/__init__.py
 !pyresumidor/gui/__main__.py
 !pyresumidor/gui/app.py
@@ -39,6 +40,7 @@
 !pyresumidor/gui/paginas/extrair.py
 !pyresumidor/gui/paginas/aplicar.py
 !pyresumidor/gui/workers/__init__.py
+!pyresumidor/gui/workers/worker_core.py
 
 # Testes
 !tests/__init__.py

@@ -35,6 +35,23 @@ class JanelaPrincipal(QMainWindow):
         self._abas.setTabsClosable(True)
         self._abas.setMovable(True)
         self._abas.setExpanding(False)
+        self._abas.setStyleSheet(
+            "QTabBar::tab {"
+            "  background: #dcdcdc;"
+            "  padding: 6px 14px;"
+            "  border: 1px solid #c0c0c0;"
+            "  border-bottom: none;"
+            "  border-top-left-radius: 4px;"
+            "  border-top-right-radius: 4px;"
+            "}"
+            "QTabBar::tab:selected {"
+            "  background: #f3f3f3;"
+            "  border-bottom: 2px solid #f3f3f3;"
+            "}"
+            "QTabBar::tab:hover {"
+            "  background: #e8e8e8;"
+            "}"
+        )
         self._abas.currentChanged.connect(self._on_aba_mudou)
         self._abas.tabCloseRequested.connect(self._on_fechar_aba)
 
@@ -75,6 +92,23 @@ class JanelaPrincipal(QMainWindow):
         menu.addStretch(1)
         self._grupo_menu.idClicked.connect(self._stack.setCurrentIndex)
         self._grupo_menu.button(0).setChecked(True)
+        coluna_menu.setStyleSheet(
+            "QPushButton {"
+            "  background: #dcdcdc;"
+            "  padding: 8px 12px;"
+            "  border: 1px solid #c0c0c0;"
+            "  border-radius: 4px;"
+            "  text-align: left;"
+            "}"
+            "QPushButton:hover {"
+            "  background: #e8e8e8;"
+            "}"
+            "QPushButton:checked {"
+            "  background: #f3f3f3;"
+            "  border-left: 3px solid #888888;"
+            "  font-weight: bold;"
+            "}"
+        )
 
         corpo.addWidget(coluna_menu, 0)
         corpo.addWidget(self._stack, 1)

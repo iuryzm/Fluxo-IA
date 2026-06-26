@@ -1,5 +1,4 @@
-"""Reservado para a Fase 3.
+"""Workers da GUI (QThread) que rodam o core sem travar a interface."""
+from pyresumidor.gui.workers.worker_core import WorkerCore, rodar_em_thread
 
-Aqui virão os workers (QThread/QRunnable) que executam as funções do core fora
-da thread de UI, devolvendo os objetos Resultado* por sinal. Ainda vazio.
-"""
+__all__ = ["WorkerCore", "rodar_em_thread"]
