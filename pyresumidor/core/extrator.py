@@ -5,20 +5,15 @@ import argparse
 from pathlib import Path
 import sys
 
-# Garante que o diretório deste script esteja no sys.path, para conseguir importar
-# o aplicador.py (instruções) e o clipboard.py que ficam ao lado dele, independente
-# de onde o comando foi rodado.
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
 try:
     # Reaproveita as instruções de formato do aplicador, para anexá-las ao fim
     # da saída e fechar o ciclo do pipeline (extrair -> aplicar) sem cópia manual.
-    from aplicador import INSTRUCOES_IA
+    from .aplicador import INSTRUCOES_IA
 except ImportError:
     INSTRUCOES_IA = None
 
 try:
-    import clipboard
+    from . import clipboard
 except ImportError:
     clipboard = None
 

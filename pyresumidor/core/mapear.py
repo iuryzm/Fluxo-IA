@@ -4,11 +4,9 @@ import fnmatch
 from pathlib import Path
 import sys
 
-# Permite importar o clipboard.py que fica ao lado deste script, independente de
-# onde o comando foi rodado. A importação é opcional: sem ele, --copiar só avisa.
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+# O clipboard é opcional: sem ele, --copiar apenas avisa.
 try:
-    import clipboard
+    from . import clipboard
 except ImportError:
     clipboard = None
 

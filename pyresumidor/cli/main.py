@@ -13,9 +13,7 @@ aqui.
 import argparse
 import sys
 
-import mapear
-import extrator
-import aplicador
+from pyresumidor.core import mapear, extrator, aplicador
 
 
 def _registrar_mapear(sub):

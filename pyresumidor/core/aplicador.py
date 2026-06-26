@@ -12,11 +12,9 @@ import html
 import tempfile
 import webbrowser
 
-# Permite importar o clipboard.py que fica ao lado deste script. Opcional: sem ele,
-# --colar simplesmente avisa que não está disponível.
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+# O clipboard é opcional: sem ele, --colar apenas avisa que não está disponível.
 try:
-    import clipboard
+    from . import clipboard
 except ImportError:
     clipboard = None
 
