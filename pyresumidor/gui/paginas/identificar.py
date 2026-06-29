@@ -9,7 +9,7 @@ projeto aqui travaria a UI; é trabalho de worker, na próxima fase).
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QComboBox
 from PySide6.QtWidgets import (
     QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QLineEdit, QFileDialog,
     QMessageBox,
@@ -57,10 +57,14 @@ class PaginaIdentificar(PaginaBase):
 
     def __init__(self):
         super().__init__()
-        # O layout da base termina com addStretch; inserimos os controles ANTES
-        # dele (no índice do _estado) para não ficarem empurrados ao rodapé.
         layout = self.layout()
         idx = layout.indexOf(self._estado) + 1
+
+        # Dropdown de projetos recentes (acima do campo). Populado só em momentos
+        # controlados (__init__/atualizar) com sinais bloqueados — nunca dentro de
+        # _definir_gitignore, para não disparar seleção durante o registro.
+        self._combo = QComboBox()
+        self._combo.activated.connect(self._on_recente)
 
         linha = QHBoxLayout()
         self._campo = QLineEdit()
@@ -79,69 +83,101 @@ class PaginaIdentificar(PaginaBase):
         self._validacao = QLabel("")
         self._validacao.setWordWrap(True)
 
-        # inseridos em ordem, logo após o _estado herdado
         container = QVBoxLayout()
+        container.addWidget(self._combo)
         container.addLayout(linha)
         container.addWidget(self._validacao)
         layout.insertLayout(idx, container)
 
+        self._popular_recentes()
+
+    def _popular_recentes(self):
+        """Recarrega o dropdown a partir de listar_recentes(). Sinais bloqueados
+        para o preenchimento não disparar _on_recente. Desabilitado se vazio."""
+        from pyresumidor.core.armazenamento import listar_recentes
+        recentes = listar_recentes()
+        self._combo.blockSignals(True)
+        self._combo.clear()
+        if recentes:
+            self._combo.addItem("— selecione um projeto recente —", userData=None)
+            for e in recentes:
+                rotulo = f"{e.get('nome', '?')}  ({e.get('gitignore', '')})"
+                self._combo.addItem(rotulo, userData=e.get("gitignore"))
+            self._combo.setEnabled(True)
+        else:
+            self._combo.addItem("— nenhum projeto recente —", userData=None)
+            self._combo.setEnabled(False)
+        self._combo.setCurrentIndex(0)
+        self._combo.blockSignals(False)
+
+    def _on_recente(self, indice):
+        caminho = self._combo.itemData(indice)
+        if caminho:
+            self._definir_gitignore(caminho)
+        # volta o combo ao placeholder (a seleção já virou o campo)
+        self._combo.blockSignals(True)
+        self._combo.setCurrentIndex(0)
+        self._combo.blockSignals(False)
+
     def _procurar(self):
-            inicio = self._projeto.raiz if (self._projeto and self._projeto.raiz) else ""
-            caminho, _ = QFileDialog.getOpenFileName(
-                self, "Selecione o .gitignore", inicio,
-                "gitignore (.gitignore);;Todos os arquivos (*)")
-            if caminho:
-                self._definir_gitignore(caminho)
+        inicio = self._projeto.raiz if (self._projeto and self._projeto.raiz) else ""
+        caminho, _ = QFileDialog.getOpenFileName(
+            self, "Selecione o .gitignore", inicio,
+            "gitignore (.gitignore);;Todos os arquivos (*)")
+        if caminho:
+            self._definir_gitignore(caminho)
 
     def _definir_gitignore(self, caminho):
-            if self._projeto is None:
-                return
-            self._projeto.gitignore = caminho
-            from pathlib import Path as _P
-            nome_pasta = _P(caminho).resolve().parent.name
-            if nome_pasta:
-                self._projeto.nome = nome_pasta
-                self.projeto_renomeado.emit()
-            self._campo.setText(caminho)
-            self._validar(caminho)
-            PaginaBase.atualizar(self)
+        if self._projeto is None:
+            return
+        self._projeto.gitignore = caminho
+        from pathlib import Path as _P
+        nome_pasta = _P(caminho).resolve().parent.name
+        if nome_pasta:
+            self._projeto.nome = nome_pasta
+            self.projeto_renomeado.emit()
+        self._campo.setText(caminho)
+        self._validar(caminho)
+        # Registra como recente (estado persistido). Usa o nome já calculado.
+        from pyresumidor.core.armazenamento import registrar_recente
+        try:
+            registrar_recente(caminho, nome_pasta or "projeto")
+        except Exception:
+            pass  # registro de recente nunca deve quebrar a identificação
+        PaginaBase.atualizar(self)
 
     def _validar(self, caminho):
-            p = Path(caminho)
-            if not p.exists():
-                self._validacao.setText("<span style='color:#c0392b'>❌ Arquivo não encontrado.</span>")
-                return
-            # Feedback imediato: ler pode demorar em disco lento (ex.: VM). Força o
-            # repaint antes da leitura para o usuário ver que algo está acontecendo.
-            self._validacao.setText("⏳ Validando…")
-            QApplication.processEvents()
-            try:
-                linhas = p.read_text(encoding="utf-8", errors="replace").splitlines()
-            except Exception as e:
-                self._validacao.setText(f"<span style='color:#c0392b'>❌ Não consegui ler: {e}</span>")
-                return
-            # negação = linha começando por ! e que NÃO termina em / (estas o core ignora)
-            negacoes = [l.strip() for l in linhas
-                        if l.strip().startswith("!") and not l.strip().endswith("/")]
-            if negacoes:
-                self._validacao.setText(
-                    f"<span style='color:#27ae60'>✅ {len(negacoes)} arquivo(s) na allowlist.</span> "
-                    "Quantos existem de fato, o Mapear dirá.")
-            else:
-                self._validacao.setText(
-                    "<span style='color:#d35400'>⚠️ Nenhuma linha de negação (<code>!arquivo</code>). "
-                    "O mapa sairá vazio — veja a ajuda (?) para o formato correto.</span>")
+        p = Path(caminho)
+        if not p.exists():
+            self._validacao.setText("<span style='color:#c0392b'>❌ Arquivo não encontrado.</span>")
+            return
+        self._validacao.setText("⏳ Validando…")
+        QApplication.processEvents()
+        try:
+            linhas = p.read_text(encoding="utf-8", errors="replace").splitlines()
+        except Exception as e:
+            self._validacao.setText(f"<span style='color:#c0392b'>❌ Não consegui ler: {e}</span>")
+            return
+        negacoes = [l.strip() for l in linhas
+                    if l.strip().startswith("!") and not l.strip().endswith("/")]
+        if negacoes:
+            self._validacao.setText(
+                f"<span style='color:#27ae60'>✅ {len(negacoes)} arquivo(s) na allowlist.</span> "
+                "Quantos existem de fato, o Mapear dirá.")
+        else:
+            self._validacao.setText(
+                "<span style='color:#d35400'>⚠️ Nenhuma linha de negação (<code>!arquivo</code>). "
+                "O mapa sairá vazio — veja a ajuda (?) para o formato correto.</span>")
 
     def _mostrar_ajuda(self):
-            cx = QMessageBox(self)
-            cx.setWindowTitle("Formato do .gitignore")
-            cx.setTextFormat(Qt.TextFormat.RichText)
-            cx.setText(_AJUDA)
-            cx.exec()
+        cx = QMessageBox(self)
+        cx.setWindowTitle("Formato do .gitignore")
+        cx.setTextFormat(Qt.TextFormat.RichText)
+        cx.setText(_AJUDA)
+        cx.exec()
 
     def atualizar(self):
         super().atualizar()
-        # ao trocar de aba/projeto, sincroniza o campo com o projeto corrente
         if hasattr(self, "_campo"):
             atual = self._projeto.gitignore if (self._projeto and self._projeto.gitignore) else ""
             self._campo.setText(atual or "")
@@ -149,3 +185,6 @@ class PaginaIdentificar(PaginaBase):
                 self._validar(atual)
             else:
                 self._validacao.setText("")
+            # repopula recentes ao trocar de aba (pode ter mudado noutra aba)
+            if hasattr(self, "_combo"):
+                self._popular_recentes()
