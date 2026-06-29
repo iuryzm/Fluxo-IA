@@ -13,6 +13,8 @@ from pyresumidor.gui.workers import rodar_em_thread
 from pyresumidor.core import extrator
 from pyresumidor.core import clipboard
 from pyresumidor.core.armazenamento import caminho_entrada_extrair, caminho_saida_extrair
+from pyresumidor.core.armazenamento import (
+    caminho_entrada_extrair, caminho_saida_extrair, registrar_historico)
 
 
 class PaginaExtrair(PaginaBase):
@@ -118,6 +120,16 @@ class PaginaExtrair(PaginaBase):
         self._botao_copiar.setEnabled(True)
         achados = sum(1 for i in res.itens if i.encontrado)
         total = len(res.itens)
+        self._conteudo_saida = res.conteudo
+        self._botao_copiar.setEnabled(True)
+        achados = sum(1 for i in res.itens if i.encontrado)
+        total = len(res.itens)
+        try:
+            registrar_historico(
+                self._projeto.gitignore, "extrair", True,
+                {"itens": total, "encontrados": achados})
+        except Exception:
+            pass
         instr = "<br>(instruções do aplicador anexadas)" if res.instrucoes_anexadas else ""
         avisos = ("<br><span style='color:#d35400'>⚠️ " + "<br>".join(res.avisos) + "</span>") if res.avisos else ""
         self._resultado.setText(

@@ -17,6 +17,7 @@ from pyresumidor.gui.workers import rodar_em_thread
 from pyresumidor.core import aplicador
 from pyresumidor.core import clipboard
 from pyresumidor.core.armazenamento import caminho_entrada_aplicar
+from pyresumidor.core.armazenamento import caminho_entrada_aplicar, registrar_historico
 
 
 class PaginaAplicar(PaginaBase):
@@ -247,6 +248,17 @@ class PaginaAplicar(PaginaBase):
                 f"<span style='color:#c0392b'>−{res.total_removidas}</span>{bk}{bloco_erros}{avisos}")
             self._botao_aplicar.setEnabled(False)
             self._texto_simulado = None
+            self._botao_aplicar.setEnabled(False)
+            self._texto_simulado = None
+            try:
+                registrar_historico(
+                    self._projeto.gitignore, "aplicar", True,
+                    {"gravados": len(gravados),
+                     "adicionadas": res.total_adicionadas,
+                     "removidas": res.total_removidas,
+                     "aplicado": True})
+            except Exception:
+                pass
         else:
             mudou = any(a.diff for a in res.arquivos)
             if mudou:

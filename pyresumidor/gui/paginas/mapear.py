@@ -12,6 +12,7 @@ from pyresumidor.gui.paginas.base import PaginaBase
 from pyresumidor.gui.workers import rodar_em_thread
 from pyresumidor.core import mapear
 from pyresumidor.core.armazenamento import caminho_mapa
+from pyresumidor.core.armazenamento import caminho_mapa, registrar_historico
 from pyresumidor.core import clipboard
 
 
@@ -77,6 +78,16 @@ class PaginaMapear(PaginaBase):
 
         self._conteudo_mapa = res.conteudo
         self._botao_copiar.setEnabled(True)
+        self._conteudo_mapa = res.conteudo
+        self._botao_copiar.setEnabled(True)
+        try:
+            registrar_historico(
+                self._projeto.gitignore, "mapear", True,
+                {"total_linhas": res.total_linhas,
+                 "n_py": len(res.arquivos_py),
+                 "n_outros": len(res.arquivos_outros)})
+        except Exception:
+            pass  # registro de histórico nunca deve quebrar a operação
         avisos = ("<br><span style='color:#d35400'>⚠️ " + "<br>".join(res.avisos) + "</span>") if res.avisos else ""
         self._resultado.setText(
             f"<span style='color:#27ae60'>✅ Mapa gerado.</span><br>"
