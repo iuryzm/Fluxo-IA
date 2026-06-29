@@ -17,7 +17,7 @@ import re
 import time
 from pathlib import Path
 
-_CONFIG_PADRAO = {"max_recentes": 10}
+_CONFIG_PADRAO = {"max_recentes": 10, "max_historico": 50}
 
 
 def diretorio_dados() -> Path:
@@ -159,3 +159,33 @@ def listar_recentes() -> list:
     if not isinstance(lista, list):
         return []
     return [e for e in lista if e.get("gitignore") and Path(e["gitignore"]).exists()]
+
+
+def registrar_historico(gitignore_path: str, comando: str, ok: bool, resumo: dict) -> None:
+    """Anexa uma execução ao histórico do projeto (em projeto.json).
+
+    Faz MERGE: lê o projeto.json inteiro, mexe só na chave 'historico' e regrava o
+    todo — para não apagar outros campos do projeto. A entrada mais recente fica no
+    topo; a lista é truncada em max_historico (config.json). O 'resumo' é um dict
+    de números simples (linhas, itens, +/−) montado por quem chama — é o dado bruto
+    que a Fase 5 vai agregar em estatísticas.
+    """
+    proj = carregar_projeto(gitignore_path)
+    if not isinstance(proj, dict):
+        proj = {}
+    hist = proj.get("historico")
+    if not isinstance(hist, list):
+        hist = []
+    hist.insert(0, {"ts": time.time(), "comando": comando, "ok": bool(ok), "resumo": resumo})
+    limite = carregar_config().get("max_historico", 50)
+    proj["historico"] = hist[:limite]
+    salvar_projeto(gitignore_path, proj)
+
+
+def listar_historico(gitignore_path: str) -> list:
+    """Histórico de execuções do projeto (mais recente primeiro). [] se não houver."""
+    proj = carregar_projeto(gitignore_path)
+    if not isinstance(proj, dict):
+        return []
+    hist = proj.get("historico")
+    return hist if isinstance(hist, list) else []
