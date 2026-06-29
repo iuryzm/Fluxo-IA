@@ -12,8 +12,12 @@ Cada projeto-alvo recebe uma subpasta estável derivada do caminho absoluto do s
 """
 from __future__ import annotations
 import hashlib
+import json
 import re
+import time
 from pathlib import Path
+
+_CONFIG_PADRAO = {"max_recentes": 10}
 
 
 def diretorio_dados() -> Path:
@@ -75,3 +79,83 @@ def caminho_entrada_aplicar(gitignore_path: str) -> Path:
     a aplicação real consome — garante que se grava exatamente o que foi simulado.
     """
     return dir_projeto(gitignore_path) / "entrada_aplicar.md"
+
+
+def _ler_json(caminho: Path, padrao):
+    """Lê um JSON com fallback robusto: arquivo ausente ou corrompido devolve o
+    padrão em vez de quebrar. Persistência nunca deve derrubar o app (ex.: escrita
+    interrompida pela faxina da VM)."""
+    try:
+        return json.loads(caminho.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return padrao
+
+
+def _gravar_json(caminho: Path, dados) -> None:
+    """Grava JSON de forma atômica: escreve num temporário e renomeia. Evita deixar
+    um arquivo meio-escrito (e portanto corrompido) se o processo morrer no meio."""
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    tmp = caminho.with_suffix(caminho.suffix + ".tmp")
+    tmp.write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(caminho)
+
+
+def caminho_config() -> Path:
+    """Arquivo de PREFERÊNCIAS do usuário (config.json). Separado do índice de
+    recentes (que é estado): resetar um não afeta o outro."""
+    return diretorio_dados() / "config.json"
+
+
+def carregar_config() -> dict:
+    """Configuração efetiva: padrões sobrescritos pelo que houver no config.json."""
+    cfg = dict(_CONFIG_PADRAO)
+    cfg.update(_ler_json(caminho_config(), {}))
+    return cfg
+
+
+def salvar_config(cfg: dict) -> None:
+    """Persiste a configuração (mescla sobre os padrões para nunca perder chaves)."""
+    completa = dict(_CONFIG_PADRAO)
+    completa.update(cfg)
+    _gravar_json(caminho_config(), completa)
+
+
+def salvar_projeto(gitignore_path: str, dados: dict) -> None:
+    """Grava o estado de um projeto (dict simples) em dados/projetos/<id>/projeto.json.
+
+    Recebe um dict (não um objeto de GUI) para manter o core independente da camada
+    de interface: a GUI converte seu Projeto em dict na fronteira.
+    """
+    _gravar_json(dir_projeto(gitignore_path) / "projeto.json", dados)
+
+
+def carregar_projeto(gitignore_path: str) -> dict:
+    """Lê o estado de um projeto. Devolve {} se ainda não houver nada gravado."""
+    return _ler_json(dir_projeto(gitignore_path) / "projeto.json", {})
+
+
+def registrar_recente(gitignore_path: str, nome: str) -> None:
+    """Registra um projeto na lista de recentes (estado, em indice.json).
+
+    O mais recente fica no topo; entradas repetidas (mesmo .gitignore) sobem em vez
+    de duplicar; a lista é truncada em max_recentes (configurável em config.json).
+    """
+    caminho = diretorio_dados() / "indice.json"
+    lista = _ler_json(caminho, [])
+    if not isinstance(lista, list):
+        lista = []
+    alvo = str(Path(gitignore_path).resolve())
+    # remove ocorrência anterior do mesmo projeto (vai voltar ao topo)
+    lista = [e for e in lista if e.get("gitignore") != alvo]
+    lista.insert(0, {"gitignore": alvo, "nome": nome, "ts": time.time()})
+    limite = carregar_config().get("max_recentes", 10)
+    _gravar_json(caminho, lista[:limite])
+
+
+def listar_recentes() -> list:
+    """Lista de recentes (mais recente primeiro). Filtra entradas cujo .gitignore
+    não existe mais no disco — não adianta oferecer um projeto que sumiu."""
+    lista = _ler_json(diretorio_dados() / "indice.json", [])
+    if not isinstance(lista, list):
+        return []
+    return [e for e in lista if e.get("gitignore") and Path(e["gitignore"]).exists()]

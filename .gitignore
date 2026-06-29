@@ -48,3 +48,4 @@
 !tests/test_mapear.py
 !tests/test_extrator.py
 !tests/test_aplicador.py
+!tests/test_armazenamento.py
