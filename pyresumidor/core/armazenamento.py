@@ -66,3 +66,12 @@ def caminho_entrada_extrair(gitignore_path: str) -> Path:
 def caminho_saida_extrair(gitignore_path: str) -> Path:
     """Onde o Extrair grava o Markdown com os trechos extraídos (saída do comando)."""
     return dir_projeto(gitignore_path) / "extracao.md"
+
+
+def caminho_entrada_aplicar(gitignore_path: str) -> Path:
+    """Onde a GUI grava a resposta da IA usada no Aplicar (plano + blocos).
+
+    Persistida como entrada do comando (histórico da Fase 4). É também a fonte que
+    a aplicação real consome — garante que se grava exatamente o que foi simulado.
+    """
+    return dir_projeto(gitignore_path) / "entrada_aplicar.md"

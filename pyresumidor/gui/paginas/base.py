@@ -4,12 +4,17 @@ A janela troca o Projeto corrente ao mudar de aba e chama definir_projeto em
 cada página; a página se redesenha em atualizar(). O cabeçalho/descrição vêm dos
 atributos de classe, então cada página concreta só declara titulo e descricao.
 """
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
 
 
 class PaginaBase(QWidget):
     titulo = "Página"
     descricao = ""
+
+    # Emitido quando uma página altera o nome do projeto corrente; a janela
+    # escuta para renomear a aba ativa (a página não toca a QTabBar diretamente).
+    projeto_renomeado = Signal()
 
     def __init__(self):
         super().__init__()

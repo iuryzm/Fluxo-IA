@@ -57,6 +57,11 @@ class PaginaExtrair(PaginaBase):
         layout.insertWidget(idx + 5, self._resultado)
 
         self._conteudo_saida = None
+        self._conteudo_saida = None
+
+        self._botao_limpar = QPushButton("Limpar campos")
+        self._botao_limpar.clicked.connect(self._limpar)
+        layout.insertWidget(idx + 6, self._botao_limpar)
 
     def _colar_entrada(self):
         try:
@@ -143,3 +148,10 @@ class PaginaExtrair(PaginaBase):
             self._botao_copiar.setText("Copiar resultado")
             self._resultado.setText("")
             self._campo.clear()
+
+    def _limpar(self):
+        self._campo.clear()
+        self._resultado.setText("")
+        self._conteudo_saida = None
+        self._botao_copiar.setEnabled(False)
+        self._botao_copiar.setText("Copiar resultado")

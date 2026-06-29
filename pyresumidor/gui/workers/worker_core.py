@@ -5,7 +5,7 @@ retornar. Mapear, Extrair e Aplicar reusam o mesmo worker. O sinal 'concluiu'
 carrega o objeto Resultado* INTEIRO (não um bool), para que a Fase 4 possa
 gravar o histórico apenas conectando mais um slot a este mesmo sinal.
 """
-from PySide6.QtCore import QObject, QThread, Signal
+from PySide6.QtCore import QObject, QThread, Signal, Qt
 
 
 class WorkerCore(QObject):
@@ -39,16 +39,21 @@ def rodar_em_thread(dono, funcao, ao_concluir, ao_falhar, *args, **kwargs):
 
     Guarda as referências em `dono` (._thread/._worker) — sem isso o coletor de
     lixo do Python destrói a thread no meio da execução. Limpa no 'finished'.
-    Retorna a thread (já iniciada).
+
+    IMPORTANTE: os callbacks de resultado (ao_concluir/ao_falhar) são conectados com
+    Qt.QueuedConnection. Sem isso, conectar a um lambda (que não é QObject e não tem
+    afinidade de thread) faz o Qt usar DirectConnection, e o callback roda na thread
+    de TRABALHO. Se ele tocar qualquer widget (ex.: QTextEdit do diff), o Qt aborta o
+    processo por violação de afinidade de thread. QueuedConnection garante que o
+    callback execute na thread de UI (onde os widgets vivem).
     """
     thread = QThread()
     worker = WorkerCore(funcao, *args, **kwargs)
     worker.moveToThread(thread)
 
     thread.started.connect(worker.executar)
-    worker.concluiu.connect(ao_concluir)
-    worker.falhou.connect(ao_falhar)
-    # encerra a thread quando o trabalho termina (sucesso ou falha)
+    worker.concluiu.connect(ao_concluir, Qt.ConnectionType.QueuedConnection)
+    worker.falhou.connect(ao_falhar, Qt.ConnectionType.QueuedConnection)
     worker.concluiu.connect(thread.quit)
     worker.falhou.connect(thread.quit)
     thread.finished.connect(worker.deleteLater)

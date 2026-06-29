@@ -92,6 +92,10 @@ class JanelaPrincipal(QMainWindow):
         menu.addStretch(1)
         self._grupo_menu.idClicked.connect(self._stack.setCurrentIndex)
         self._grupo_menu.button(0).setChecked(True)
+        # Escuta o pedido de renomeação vindo de qualquer página (a Identificar
+        # dispara ao definir o .gitignore). Conectado uma vez; vale para todas.
+        for _pag in self._paginas:
+            _pag.projeto_renomeado.connect(self._on_projeto_renomeado)
         coluna_menu.setStyleSheet(
             "QPushButton {"
             "  background: #dcdcdc;"
@@ -139,3 +143,10 @@ class JanelaPrincipal(QMainWindow):
         self._abas.removeTab(indice)
         if not self._projetos:      # nunca deixa a janela sem projeto
             self.novo_projeto()
+
+    @Slot()
+    def _on_projeto_renomeado(self):
+        # Renomeia a aba ativa para o nome atual do projeto corrente.
+        idx = self._abas.currentIndex()
+        if 0 <= idx < len(self._projetos):
+            self._abas.setTabText(idx, self._projetos[idx].nome)
