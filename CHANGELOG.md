@@ -18,6 +18,8 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
   *quantos* nós casaram (não *quais*), então o campo só é marcado quando todos os
   itens pedidos de um arquivo são localizados. Reportar isso por nó depende de
   expor o resultado no `ExtratorAST`.
+- Em Aplicar dar a possibilidade da IA enviar comandos powershell.
+  - Para cada comando capturar a sua saída e deixar de uma forma para já enviar para a IA.
 - Possibilitar a IA de alterar o CHANGELOG.md também.
 - Docstrings are important.
 - 1º monte um plano de trabalho. Depois iremos executar.
