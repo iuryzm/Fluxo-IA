@@ -95,18 +95,13 @@ class PaginaIdentificar(PaginaBase):
 
     def _definir_gitignore(self, caminho):
             if self._projeto is None:
-                print("[diag] _definir_gitignore: self._projeto e None — sai sem emitir")
                 return
             self._projeto.gitignore = caminho
             from pathlib import Path as _P
             nome_pasta = _P(caminho).resolve().parent.name
-            print(f"[diag] _definir_gitignore: nome_pasta={nome_pasta!r}")
             if nome_pasta:
                 self._projeto.nome = nome_pasta
-                print(f"[diag] emitindo projeto_renomeado (nome agora={self._projeto.nome!r})")
                 self.projeto_renomeado.emit()
-            else:
-                print("[diag] nome_pasta vazio — NAO emitiu")
             self._campo.setText(caminho)
             self._validar(caminho)
             PaginaBase.atualizar(self)
