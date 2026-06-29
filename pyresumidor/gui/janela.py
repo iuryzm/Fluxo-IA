@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 
 from pyresumidor.gui.modelos import Projeto
 from pyresumidor.gui.paginas import (
-    PaginaIdentificar, PaginaMapear, PaginaExtrair, PaginaAplicar,
+    PaginaIdentificar, PaginaMapear, PaginaExtrair, PaginaAplicar, PaginaEstatisticas,
 )
 
 
@@ -73,6 +73,7 @@ class JanelaPrincipal(QMainWindow):
             PaginaMapear(),
             PaginaExtrair(),
             PaginaAplicar(),
+            PaginaEstatisticas(),
         ]
         self._stack = QStackedWidget()
         for p in self._paginas:

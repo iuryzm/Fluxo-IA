@@ -17,7 +17,8 @@ class EstatisticasProjeto:
     por_comando: dict           # {"mapear": 3, "extrair": 5, "aplicar": 2}
     total_adicionadas: int      # soma das linhas + dos Aplicar
     total_removidas: int        # soma das linhas - dos Aplicar
-    evolucao_linhas: list       # [(ts, total_linhas), ...] em ordem cronológica (p/ gráfico)
+    evolucao_linhas: list       # [(ts, total_linhas), ...] cronológico (gráfico)
+    evolucao_arquivos: list     # [(ts, n_py + n_outros), ...] cronológico (gráfico)
     ultimo_mapa: dict = field(default_factory=dict)  # resumo do Mapear mais recente
 
 
@@ -28,6 +29,7 @@ def calcular(gitignore_path: str) -> EstatisticasProjeto:
     por_comando: dict = {}
     add = rem = 0
     evolucao = []           # (ts, total_linhas) dos Mapear
+    evolucao_arq = []       # (ts, n_py + n_outros) dos Mapear
     ultimo_mapa: dict = {}
 
     for entrada in hist:
@@ -46,11 +48,13 @@ def calcular(gitignore_path: str) -> EstatisticasProjeto:
             tl = resumo.get("total_linhas")
             if ts is not None and tl is not None:
                 evolucao.append((ts, int(tl)))
-            if not ultimo_mapa:   # hist está em ordem decrescente -> 1º mapear visto é o mais recente
+                n_arq = int(resumo.get("n_py", 0) or 0) + int(resumo.get("n_outros", 0) or 0)
+                evolucao_arq.append((ts, n_arq))
+            if not ultimo_mapa:   # hist decrescente -> 1º mapear visto é o mais recente
                 ultimo_mapa = dict(resumo)
 
-    # série cronológica (ascendente) para o gráfico de evolução
     evolucao.sort(key=lambda par: par[0])
+    evolucao_arq.sort(key=lambda par: par[0])
 
     return EstatisticasProjeto(
         total_execucoes=len(hist),
@@ -58,5 +62,6 @@ def calcular(gitignore_path: str) -> EstatisticasProjeto:
         total_adicionadas=add,
         total_removidas=rem,
         evolucao_linhas=evolucao,
+        evolucao_arquivos=evolucao_arq,
         ultimo_mapa=ultimo_mapa,
     )

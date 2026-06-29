@@ -73,3 +73,11 @@ def test_extrair_nao_soma_linhas(dados_tmp, gitignore):
     s = est.calcular(gitignore)
     assert s.total_adicionadas == 0
     assert s.total_removidas == 0
+
+
+def test_evolucao_arquivos(dados_tmp, gitignore):
+    arz.registrar_historico(gitignore, "mapear", True, {"total_linhas": 100, "n_py": 5, "n_outros": 2})
+    arz.registrar_historico(gitignore, "mapear", True, {"total_linhas": 150, "n_py": 6, "n_outros": 3})
+    s = est.calcular(gitignore)
+    arqs = [n for _, n in s.evolucao_arquivos]
+    assert arqs == [7, 9]   # 5+2, depois 6+3, em ordem cronológica
