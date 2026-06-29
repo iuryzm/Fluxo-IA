@@ -53,3 +53,17 @@ def test_extrair_resposta_inexistente_vira_erro(projeto, tmp_path):
     res = extrator.executar_extracao(str(tmp_path / "fantasma.json"), str(projeto), str(saida))
     assert res.sucesso is False
     assert res.erros
+
+
+def test_json_malformado_vira_erro_nao_systemexit(projeto, tmp_path):
+    # Regressao: JSON invalido na resposta da IA deve virar ErroEntrada (capturada
+    # como sucesso=False), NUNCA sys.exit/SystemExit — que na GUI derrubava a janela.
+    entrada = tmp_path / "resp.md"
+    entrada.write_text(
+        '{"arquivos_completos": ["x.py"], "classes": {}, "funcoes": {},}',  # virgula sobrando
+        encoding="utf-8")
+    saida = tmp_path / "out.md"
+    # se ainda houvesse sys.exit, isto levantaria SystemExit e o teste FALHARIA aqui
+    res = extrator.executar_extracao(str(entrada), str(projeto), str(saida))
+    assert res.sucesso is False
+    assert res.erros

@@ -25,27 +25,64 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - 1º monte um plano de trabalho. Depois iremos executar.
 
 ## [WorkingAt]
-- Construir a camada de GUI (PySide6), isolada em `pyresumidor/gui/` — o core
-  permanece zero-dependência e a CLI segue funcionando sozinha.
-- **Arquitetura travada:** um menu lateral e um `QStackedWidget` de páginas
-  *compartilhados*; abas no topo representam projetos e só trocam qual objeto
-  `Projeto` as páginas leem/escrevem. Quatro páginas: Identificar, Mapear,
-  Extrair, Aplicar.
-- Separação leve (não MVC formal por tela): `Projeto` como model, página como
-  view, controller fino disparando o core numa *worker thread* (`QThread`/
-  `QRunnable`) para não travar a UI. Promover uma tela a presenter só se ela
-  crescer demais.
-- A GUI **não** conversa com IA: orquestra o vaivém clipboard/arquivo
-  (Identificar → Mapear → cola resposta → Extrair → cola resposta → Aplicar),
-  consumindo os objetos `Resultado*` que o core agora devolve.
-- **Próximo passo (Fase 2):** esqueleto — janela, abas de projeto, menu lateral
-  e as quatro páginas como stubs, sem ligação com o backend ainda.
-- A seguir: persistência de projeto (salvar/carregar, recentes, histórico de
-  comandos), estatísticas por comando e gráfico de evolução do tamanho do
-  projeto via QtCharts (sem QtWebEngine).
+- Fase 6 (polimento da GUI), itens candidatos:
+  - Visualizador de diff nativo mais rico na página Aplicar (hoje é texto colorido
+    via QTextCharFormat; sem QtWebEngine).
+  - Histórico em tabela (QTableWidget) em vez de linhas de texto, se valer a pena.
+  - Tratamento de bordas e ajustes visuais conforme o uso real revelar.
+- Alinhar o piso de Python real: o projeto roda em 3.14, mas `requires-python`
+  declara `>=3.9` sem CI que verifique — decidir se mantém a promessa ou sobe o piso.
 
 ## [Unreleased]
 - Sem itens.
+
+## [1.5.0] - 2026.06.29
+### Added
+- **Interface gráfica (PySide6), isolada em `pyresumidor/gui/`**: aplicação
+  completa lançada por `python -m pyresumidor.gui`. O core permanece
+  zero-dependência e a CLI segue funcionando sozinha; PySide6 é dependência
+  opcional (grupo `gui`), importada apenas pela camada de interface.
+- **Navegação por projetos e operações**: abas no topo representam projetos
+  (adicionar/fechar/renomear — a aba assume o nome da pasta-pai do `.gitignore`);
+  um menu lateral e um `QStackedWidget` de páginas *compartilhados* trocam apenas
+  qual `Projeto` as páginas leem. Cinco páginas: Identificar, Mapear, Extrair,
+  Aplicar e Histórico/Estatísticas.
+- **Execução do core fora da thread de UI (`WorkerCore`/`rodar_em_thread`)**: cada
+  operação roda num `QThread` e devolve o objeto `Resultado*` por sinal, sem
+  congelar a janela. Os sinais usam `QueuedConnection` com slots-método (não
+  lambdas) para respeitar a afinidade de thread do Qt.
+- **Página Identificar**: seleção do `.gitignore` com validação da allowlist,
+  botão de ajuda explicando o formato, e dropdown de **projetos recentes**
+  (persistido) para reabrir projetos sem renavegar.
+- **Página Mapear/Extrair/Aplicar**: cada uma roda seu comando do core, exibe o
+  resultado e copia a saída para o chat da IA. Extrair tem campo de entrada,
+  checkbox de instruções e botão limpar. Aplicar separa plano (JSON) e código em
+  dois campos (o usuário nunca digita crases), exige **simular antes de aplicar**,
+  confirma a gravação listando os arquivos, mostra o diff colorido inline e cria
+  backups `.bak`.
+- **Persistência em `pyresumidor/dados/` (zero-dependência, JSON)**: estado por
+  projeto, configuração do usuário (`config.json`), índice de projetos recentes e
+  histórico de comandos. Gravação atômica (escreve em `.tmp` e renomeia) e leitura
+  com fallback — um JSON corrompido pela limpeza do ambiente não derruba o app.
+  Os artefatos ficam dentro da instalação do PyResumidor para sobreviver à limpeza
+  periódica de diretórios de projeto-alvo.
+- **Histórico de comandos**: cada Mapear/Extrair/Aplicar (apenas aplicação real,
+  não simulação) registra entrada, saída e um resumo numérico no `projeto.json`.
+- **Página Histórico/Estatísticas**: lista das execuções, contadores por comando,
+  total de linhas adicionadas/removidas e **gráfico de evolução** (linhas e número
+  de arquivos por mapeamento) via QtCharts — que já vem no PySide6, sem dependência
+  nova. Degrada para um aviso se o QtCharts não estiver disponível.
+- **Persistência e estatísticas cobertas por testes** (pytest): 23 testes novos
+  somam-se aos 14 anteriores (config/projeto/recentes/histórico isolados em
+  `tmp_path`, agregação de estatísticas, e a regressão de JSON malformado virando
+  `ErroEntrada` em vez de derrubar a interface).
+
+### Changed
+- **`extrair_json_de_texto` não usa mais `sys.exit`**: JSON ausente ou inválido na
+  resposta da IA agora levanta `ErroEntrada` (convertido em `sucesso=False`),
+  fechando o último caminho do core que encerrava o processo — era o que derrubava
+  a janela da GUI ao colar um JSON malformado.
+- **`version` do pacote** atualizada para `1.5.0`.
 
 ## [1.4.0] - 2026.06.26
 ### Added
