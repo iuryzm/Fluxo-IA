@@ -21,10 +21,7 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - Em Aplicar dar a possibilidade da IA enviar comandos powershell.
   - Para cada comando capturar a sua saída e deixar de uma forma para já enviar para a IA.
 - Possibilitar a IA de alterar o CHANGELOG.md também.
-- Docstrings are important.
-- 1º monte um plano de trabalho. Depois iremos executar.
-
-## [WorkingAt]
+- Avisa a IA que pode pedir para extrair código sem anexar as instruções do aplicador à saída, caso isso seja desejável para utilizar menos tokens.
 - Fase 6 (polimento da GUI), itens candidatos:
   - Visualizador de diff nativo mais rico na página Aplicar (hoje é texto colorido
     via QTextCharFormat; sem QtWebEngine).
@@ -32,6 +29,36 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
   - Tratamento de bordas e ajustes visuais conforme o uso real revelar.
 - Alinhar o piso de Python real: o projeto roda em 3.14, mas `requires-python`
   declara `>=3.9` sem CI que verifique — decidir se mantém a promessa ou sobe o piso.
+
+## [WorkingAt]
+- Docstrings are important.
+- 1º monte um plano de trabalho. Depois iremos executar.
+- Estou achando o número de linhas um pouco exagerado. Poderiamos contar por arquivo e fazer a estatística por arquivo também.
+- Possibilitar a IA de pedir um trecho do código por exemplo as 30 primeiras linhas do arquivo. Ou as 5 primeiras linhas de tal função. Ou as últimas linhas do arquivo ou da função ou do método. Isso pode ajudar a IA a entender os imports ou identação de um trecho, etc. O que vc acha? Acha interessante ter essa funcionalidade?
+- Relato de um problema:
+### RELATÓRIO — divergência entre código extraído e código em disco (aplicador.py / âncoras)
+**Sintoma:** operação trecho com âncora sobre uma linha de import falha repetidamente com "âncora não encontrada dentro do escopo do alvo", apesar da âncora ter sido copiada do código extraído fornecido à IA.
+
+**Causa raiz:** a ferramenta de extração de código (a que gera os blocos "Código Extraído para a IA") **normaliza imports multilinha para uma única linha** na saída exibida. No disco, o import está em formato parentético com um símbolo por linha:
+````py
+from componentes.fluxos_model import (
+    TIPO_ABRIR_ARQUIVOS,
+    ...
+    TIPOS_FILTRO,
+)
+````
+
+Mas foi exibido à IA como:
+````py
+from componentes.fluxos_model import TIPO_ABRIR_ARQUIVOS, ..., TIPOS_FILTRO
+````
+A IA, ao criar uma âncora `trecho` copiando de "TIPOS_COMBINADOR, TIPOS_FILTRO" (dois nomes na mesma linha, como exibido), produz um texto que não existe em disco (onde cada nome está em sua própria linha, terminando em vírgula). A busca de âncora — que "ignora indentação/espaços mas não reordena/quebra linhas" — não casa. Resultado: falha silenciosa e repetida, difícil de diagnosticar porque o código exibido "parece" conter a âncora.
+
+**Recomendações (qualquer uma resolve; idealmente as duas primeiras):**
+1. **Extração fiel:** a ferramenta de extração NÃO deve reformatar/normalizar o código exibido. Deve entregar os bytes exatos do disco (incluindo imports multilinha, quebras e vírgulas de fim de linha). Âncoras dependem de fidelidade textual; qualquer normalização na exibição quebra o contrato.
+2. **Robustez da busca de âncora a whitespace entre tokens:** fazer o casamento de âncora tolerar diferenças de quebra de linha dentro de uma mesma construção sintática — por exemplo, comparar após colapsar todos os runs de whitespace (incluindo `\n`) em um único espaço, dos dois lados. Isso permitiria que uma âncora escrita em linha única casasse um import multilinha equivalente. (Cuidado: só faz sentido para casamento; o posicionamento do código novo ainda precisa respeitar a estrutura.)
+3. **Preferir edições AST a** `trecho` para imports: o aplicador já suporta `substituir`/`adicionar` por AST para funções/classes/métodos. Um comando análogo para imports — algo como `{"acao": "adicionar_import", "arquivo": ..., "modulo": "componentes.fluxos_model", "nomes": ["TIPO_OPERACAO", "TIPOS_OPERACAO"]}` — que parseia o AST, encontra o `ImportFrom` daquele módulo e insere os nomes, seria imune a formatação (linha única vs. parentético). Imports são o caso onde `trecho` mais sofre com formatação, e um handler AST dedicado eliminaria essa classe de bug.
+4. **Diagnóstico melhor na falha:** quando uma âncora não casa, o aplicador poderia imprimir as N linhas do escopo do alvo que mais se aproximam da âncora (por similaridade), ajudando a IA a ver que o texto real difere. Hoje "âncora não encontrada" não revela como o arquivo difere.
 
 ## [Unreleased]
 - Sem itens.
