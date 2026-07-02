@@ -227,6 +227,36 @@ def executar_extracao(resposta_path_str: str, projeto_path_str: str, saida_path_
                 itens.append(ItemExtraido(caminho=caminho_relativo, tipo=tipo, nome=nome, encontrado=False))
         md_saida.append("---\n")
 
+    # 2b. Trechos parciais (fatias: primeiras/últimas N linhas de um alvo ou arquivo)
+    for pedido in requisicoes.get("trechos", []):
+        if not isinstance(pedido, dict):
+            avisos.append("Entrada de 'trechos' ignorada (não é um objeto).")
+            continue
+        caminho_relativo = pedido.get("arquivo")
+        alvo = pedido.get("alvo")
+        fatia = pedido.get("fatia", "")
+        if not caminho_relativo:
+            avisos.append("Entrada de 'trechos' sem 'arquivo' — ignorada.")
+            continue
+
+        arquivo_alvo = projeto_path / caminho_relativo
+        if not arquivo_alvo.exists():
+            md_saida.append(f"### ✂️ Trecho parcial: `{caminho_relativo}`\n"
+                            "\n*⚠️ Arquivo não encontrado no projeto.*\n")
+            md_saida.append("---\n")
+            itens.append(ItemExtraido(caminho=caminho_relativo, tipo="trecho",
+                                      nome=(alvo or fatia or None), encontrado=False))
+            continue
+
+        md_saida.append(f"### ✂️ Trecho parcial: `{caminho_relativo}`")
+        trecho_md, encontrado, aviso = processar_trecho(arquivo_alvo, alvo, fatia)
+        md_saida.append(trecho_md)
+        md_saida.append("---\n")
+        if aviso:
+            avisos.append(aviso)
+        itens.append(ItemExtraido(caminho=caminho_relativo, tipo="trecho",
+                                   nome=(alvo or fatia or None), encontrado=encontrado))
+
     # 3. Instruções do aplicador
     instrucoes_anexadas = False
     if incluir_instrucoes:
@@ -321,3 +351,112 @@ if __name__ == "__main__":
 #
 # Para gerar só o código, sem o guia de aplicação no fim:
 # python .\extrator.py .\test\resposta.json ..\VisualizadorPN .\test\codigo_para_ia.md --sem-instrucoes
+
+
+def _parsear_fatia(fatia: str):
+    """Valida e interpreta uma fatia no formato 'primeiras:N' ou 'ultimas:N'.
+
+    Devolve (lado, n, erro): lado in {"primeiras", "ultimas"}, n > 0, erro=None em
+    sucesso; em falha, (None, None, mensagem). Erro-como-dado: nunca levanta.
+    Intervalo absoluto (linhas A-B) é deliberadamente NÃO suportado — o projeto
+    conversa por nome/posição-relativa, não por número de linha absoluto.
+    """
+    if not isinstance(fatia, str) or ":" not in fatia:
+        return None, None, (f"fatia inválida: {fatia!r}. Use 'primeiras:N' ou 'ultimas:N'.")
+    lado, _, num = fatia.partition(":")
+    lado = lado.strip().lower()
+    num = num.strip()
+    if lado not in ("primeiras", "ultimas"):
+        return None, None, (f"fatia inválida: {fatia!r}. O lado deve ser 'primeiras' ou 'ultimas'.")
+    if not num.isdigit() or int(num) <= 0:
+        return None, None, (f"fatia inválida: {fatia!r}. N deve ser um inteiro positivo.")
+    return lado, int(num), None
+
+
+def _span_alvo_no_arquivo(arvore, linhas_fonte: list, alvo: str):
+    """Localiza o span (1-based inclusivo, contando decoradores) de um alvo por nome.
+
+    `alvo` pode ser "funcao", "Classe" ou "Classe.metodo". Reutiliza o mesmo critério
+    de início do _fonte_do_no (primeiro decorador, se houver). Devolve (ini, fim) ou
+    None se o alvo não for encontrado. Método só casa dentro da classe nomeada, para
+    não confundir homônimos (mesma regra do ExtratorAST).
+    """
+    funcdefs = (ast.FunctionDef, ast.AsyncFunctionDef)
+
+    def _ini(no):
+        if getattr(no, "decorator_list", None):
+            return no.decorator_list[0].lineno
+        return no.lineno
+
+    if "." in alvo:
+        nome_classe, nome_metodo = alvo.split(".", 1)
+        for no in arvore.body:
+            if isinstance(no, ast.ClassDef) and no.name == nome_classe:
+                for sub in no.body:
+                    if isinstance(sub, funcdefs) and sub.name == nome_metodo:
+                        return _ini(sub), sub.end_lineno
+        return None
+
+    for no in arvore.body:
+        if isinstance(no, (ast.ClassDef, *funcdefs)) and no.name == alvo:
+            return _ini(no), no.end_lineno
+    return None
+
+
+def processar_trecho(caminho_arquivo: Path, alvo, fatia: str):
+    """Extrai uma FATIA (primeiras/últimas N linhas) de um alvo ou do arquivo inteiro.
+
+    Se `alvo` for None/"" a fatia é relativa ao arquivo todo (caso 'imports do topo');
+    caso contrário, ao span do nó nomeado (funcao / Classe / Classe.metodo). N maior
+    que o tamanho disponível devolve tudo que houver (não é erro). O recorte SEMPRE
+    vem rotulado como parcial, com aviso para a IA não usá-lo como âncora de 'trecho'.
+
+    Devolve (markdown, encontrado: bool, aviso: str|None). Erro-como-dado: problemas
+    de fatia/alvo viram markdown de aviso + encontrado=False, sem exceção.
+    """
+    cb = chr(96) * 3
+    rot_alvo = f"`{alvo}`" if alvo else "arquivo"
+
+    lado, n, erro = _parsear_fatia(fatia)
+    if erro:
+        return (f"\n#### Trecho ({fatia}) de {rot_alvo}: `{caminho_arquivo.name}`\n"
+                f"*⚠️ {erro}*\n", False, f"{caminho_arquivo.name}: {erro}")
+
+    try:
+        source_code = caminho_arquivo.read_text(encoding="utf-8")
+    except Exception as e:
+        msg = f"erro ao ler `{caminho_arquivo.name}`: {e}"
+        return (f"\n*⚠️ {msg}*\n", False, msg)
+
+    linhas = source_code.splitlines()
+
+    if alvo:
+        try:
+            arvore = ast.parse(source_code)
+        except SyntaxError as e:
+            msg = f"`{caminho_arquivo.name}` não parseia (fatia com alvo exige .py válido): {e}"
+            return (f"\n*⚠️ {msg}*\n", False, msg)
+        span = _span_alvo_no_arquivo(arvore, linhas, alvo)
+        if span is None:
+            msg = f"alvo `{alvo}` não encontrado em `{caminho_arquivo.name}`."
+            return (f"\n#### Trecho ({fatia}) de {rot_alvo}: `{caminho_arquivo.name}`\n"
+                    f"*⚠️ {msg}*\n", False, msg)
+        ini, fim = span
+        bloco = linhas[ini - 1:fim]  # 1-based inclusivo -> slice
+    else:
+        bloco = linhas
+
+    total = len(bloco)
+    recorte = bloco[:n] if lado == "primeiras" else bloco[-n:]
+    parcial = len(recorte) < total  # só é "recorte" se sobrou coisa de fora
+
+    corpo = "\n".join(recorte)
+    label = f"{lado} {n} linha(s)"
+    cabecalho = f"\n#### Trecho ({label} de {rot_alvo}): `{caminho_arquivo.name}`\n"
+    if parcial:
+        cabecalho += ("⚠️ RECORTE PARCIAL — não use como âncora de `trecho` nem como "
+                      "definição completa; peça o nó inteiro (via `funcoes`/`classes`) "
+                      "se for editar.\n")
+    else:
+        cabecalho += f"*(alvo tem {total} linha(s); a fatia cobre tudo)*\n"
+    return (cabecalho + f"{cb}python\n{corpo}\n{cb}\n", True, None)
