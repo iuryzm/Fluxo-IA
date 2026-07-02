@@ -6,7 +6,7 @@ import textwrap
 import difflib
 import shutil
 from pathlib import Path
-from .resultados import ResultadoAplicar, ResultadoArquivoAplicado, ErroEntrada
+from .resultados import ResultadoAplicar, ResultadoArquivoAplicado, ErroEntrada, PassoComando, ResultadoComando, PassoPlano
 from collections import defaultdict
 import sys
 import html
@@ -594,146 +594,13 @@ def _gerar_html_diff(diffs_arquivos: list, projeto_path: Path, aplicado: bool, e
 def aplicar_em_arquivo(rel: str, alvo: Path, ops: list, blocos: dict) -> tuple:
     """Aplica (em memória) todas as operações de um arquivo.
 
-    Retorna (texto_original, texto_novo, lista_de_erros).
+    Lê o texto atual do disco (ou "" se o arquivo não existe) e delega o trabalho de
+    aplicação a _aplicar_ops_em_texto (núcleo puro). Wrapper fino: assinatura e retorno
+    (texto_original, texto_novo, lista_de_erros) inalterados — o caminho legado do
+    executar não percebe diferença.
     """
-    erros = []
     original = alvo.read_text(encoding="utf-8", errors="replace") if alvo.exists() else ""
-    novo = original
-
-    for op in ops:
-        acao = op.get("acao")
-        codigo_id = op.get("codigo_id")
-        codigo = blocos.get(codigo_id) if codigo_id else None
-
-        if acao == "arquivo":
-            if codigo is None:
-                erros.append(f"[{rel}] bloco de código '{codigo_id}' não encontrado.")
-                continue
-            novo = textwrap.dedent(codigo).strip("\n") + "\n"
-            continue
-
-        if acao == "trecho":
-            tipo = op.get("tipo")
-            alvo_nome = op.get("alvo", "")
-            posicao = op.get("posicao", "substituir")
-            ancora_id = op.get("ancora_id")
-            ancora = blocos.get(ancora_id) if ancora_id else None
-
-            if posicao not in ("substituir", "antes", "depois"):
-                erros.append(f"[{rel}] posição inválida em 'trecho': '{posicao}'.")
-                continue
-            if not ancora or not ancora.strip():
-                erros.append(f"[{rel}] âncora '{ancora_id}' não encontrada ou vazia.")
-                continue
-            # codigo_id é opcional só no caso de apagar (substituir por nada).
-            if codigo_id is not None and codigo is None:
-                erros.append(f"[{rel}] bloco de código '{codigo_id}' não encontrado.")
-                continue
-            if posicao in ("antes", "depois") and not (codigo and codigo.strip()):
-                erros.append(f"[{rel}] 'trecho' com posição '{posicao}' exige um código não-vazio.")
-                continue
-
-            if tipo == "arquivo":
-                no = None  # escopo = arquivo inteiro
-            else:
-                if alvo.suffix != ".py":
-                    erros.append(f"[{rel}] 'trecho' com tipo '{tipo}' exige arquivo .py; "
-                                 "para configs use \"tipo\": \"arquivo\".")
-                    continue
-                try:
-                    arvore = ast.parse(novo)
-                except SyntaxError as e:
-                    erros.append(f"[{rel}] não consegui parsear o estado atual do arquivo: {e} "
-                                 "(ações por nó exigem Python válido — corrija a sintaxe e rode de novo, "
-                                 "ou use \"acao\": \"arquivo\").")
-                    return original, original, erros
-                no = _encontrar_no(arvore, tipo, alvo_nome)
-                if no is None:
-                    erros.append(f"[{rel}] {tipo} '{alvo_nome}' não encontrado para ancorar o trecho.")
-                    continue
-
-            resultado, erro = _aplicar_trecho_no_texto(novo, no, ancora, codigo or "", posicao)
-            if erro:
-                erros.append(f"[{rel}] {tipo} '{alvo_nome or rel}': {erro}")
-                continue
-            novo = resultado
-            continue
-        if acao == "adicionar_import":
-            if alvo.suffix != ".py":
-                erros.append(f"[{rel}] 'adicionar_import' exige arquivo .py.")
-                continue
-            modulo = op.get("modulo")
-            nomes = op.get("nomes") or []
-            if not modulo or not isinstance(nomes, list) or not nomes:
-                erros.append(f"[{rel}] 'adicionar_import' exige 'modulo' (str) e "
-                             "'nomes' (lista não-vazia).")
-                continue
-            resultado, erro = _adicionar_import_no_texto(novo, modulo, nomes)
-            if erro:
-                erros.append(f"[{rel}] adicionar_import '{modulo}': {erro}")
-                continue
-            novo = resultado
-            continue
-
-        # Operações que dependem de AST exigem .py
-        if alvo.suffix != ".py":
-            erros.append(f"[{rel}] ação '{acao}' em arquivo não-Python; use \"acao\": \"arquivo\".")
-            continue
-
-        try:
-            arvore = ast.parse(novo)
-        except SyntaxError as e:
-            erros.append(f"[{rel}] não consegui parsear o estado atual do arquivo: {e}")
-            return original, original, erros
-
-        tipo = op.get("tipo")
-        alvo_nome = op.get("alvo", "")
-        no = _encontrar_no(arvore, tipo, alvo_nome)
-
-        if acao == "substituir":
-            if no is None:
-                erros.append(f"[{rel}] {tipo} '{alvo_nome}' não encontrado para substituir.")
-                continue
-            if codigo is None:
-                erros.append(f"[{rel}] bloco de código '{codigo_id}' não encontrado.")
-                continue
-            novo = _substituir_no_texto(novo, no, codigo)
-
-        elif acao == "adicionar":
-            if codigo is None:
-                erros.append(f"[{rel}] bloco de código '{codigo_id}' não encontrado.")
-                continue
-            if tipo == "metodo":
-                if "." not in alvo_nome:
-                    erros.append(f"[{rel}] para adicionar método use \"alvo\": \"Classe.metodo\".")
-                    continue
-                nome_classe, _ = alvo_nome.split(".", 1)
-                classe_no = _encontrar_classe(arvore, nome_classe)
-                if classe_no is None:
-                    erros.append(f"[{rel}] classe '{nome_classe}' não encontrada para inserir o método.")
-                    continue
-                if no is not None:  # _encontrar_no já achou o método -> existe
-                    erros.append(f"[{rel}] método '{alvo_nome}' já existe; use \"substituir\".")
-                    continue
-                novo = _adicionar_metodo_no_texto(novo, classe_no, codigo)
-            else:
-                if no is not None:
-                    erros.append(f"[{rel}] {tipo} '{alvo_nome}' já existe; use \"substituir\".")
-                    continue
-                novo = _adicionar_no_texto(novo, codigo)
-
-        else:
-            erros.append(f"[{rel}] ação desconhecida: '{acao}'.")
-
-    # Guarda-corpo: nunca devolve um .py que não parseia.
-    if alvo.suffix == ".py" and novo != original:
-        try:
-            ast.parse(novo)
-        except SyntaxError as e:
-            erros.append(f"[{rel}] resultado final ficou com sintaxe inválida; arquivo NÃO será alterado: {e}")
-            return original, original, erros
-
-    return original, novo, erros
+    return _aplicar_ops_em_texto(rel, original, alvo, ops, blocos)
 
 
 def executar(resposta_path_str: str, projeto_path_str: str,
@@ -743,6 +610,15 @@ def executar(resposta_path_str: str, projeto_path_str: str,
     Retorna ResultadoAplicar: faz as mutações de arquivo (gravar/.bak/patch), mas
     NÃO imprime, não abre navegador e não encerra o processo. Render de console,
     HTML e browser são responsabilidade da CLI.
+
+    Dois modos:
+    - LEGADO (sem acao 'comando'): agrupa por arquivo, calcula diffs, grava se
+      `aplicar`. Atômico, com dry-run. Comportamento de sempre.
+    - SEQUENCIADO (há acao 'comando'): monta a sequência ordenada (edições + comandos)
+      via _montar_passos e NÃO grava aqui — a UI percorre os passos, grava as edições e
+      roda os comandos com os gates. O core só prepara (fiel a 'core não toca o mundo');
+      marca `sequenciado=True` e expõe `estados_finais` para a UI gravar. `aplicar` não
+      grava neste modo.
     """
     projeto_path = Path(projeto_path_str).resolve()
     avisos = []
@@ -775,6 +651,26 @@ def executar(resposta_path_str: str, projeto_path_str: str,
                                 caminho_patch=None, caminho_html=None,
                                 avisos=["Nenhuma operação encontrada no plano (chave 'operacoes' vazia)."])
 
+    sequenciado = any(op.get("acao") == "comando" for op in operacoes)
+
+    # ----- MODO SEQUENCIADO (modo C): core prepara, UI executa. Não grava aqui. -----
+    if sequenciado:
+        passos, arquivos_result, estados_finais, erros_fatais = _montar_passos(operacoes, blocos, projeto_path)
+        if erros_fatais:
+            return ResultadoAplicar(sucesso=False, aplicado=False, arquivos=[],
+                                    total_adicionadas=0, total_removidas=0,
+                                    caminho_patch=None, caminho_html=None,
+                                    erros=erros_fatais, sequenciado=True)
+        total_add = sum(a.adicionadas for a in arquivos_result)
+        total_del = sum(a.removidas for a in arquivos_result)
+        return ResultadoAplicar(sucesso=True, aplicado=False, arquivos=arquivos_result,
+                                total_adicionadas=total_add, total_removidas=total_del,
+                                caminho_patch=None, caminho_html=None,
+                                avisos=["Plano com comando(s): preparado para execução sequenciada "
+                                        "pela interface (o core não executa comandos nem grava)."],
+                                passos=passos, sequenciado=True, estados_finais=estados_finais)
+
+    # ----- MODO LEGADO: agrupa por arquivo, grava se `aplicar` (comportamento de sempre). -----
     por_arquivo = defaultdict(list)
     for op in operacoes:
         rel = op.get("arquivo")
@@ -1028,3 +924,254 @@ def _adicionar_import_no_texto(fonte: str, modulo: str, nomes: list):
 
     novas = bloco.split("\n") + [""] + linhas
     return "\n".join(novas), None
+
+
+def _aplicar_ops_em_texto(rel: str, original: str, alvo: Path, ops: list, blocos: dict) -> tuple:
+    """Aplica `ops` a um TEXTO de partida (`original`), sem ler o disco.
+
+    Núcleo puro extraído de aplicar_em_arquivo: recebe o texto inicial como argumento
+    em vez de lê-lo do disco, para que o interpretador de sequência (modo C) possa
+    encadear várias edições ao mesmo arquivo em memória (a 2ª parte do que a 1ª
+    produziu). `alvo` é usado só para metadados do caminho (`alvo.suffix`), nunca para
+    reler conteúdo. Retorna (original, novo, erros) — mesma tupla de aplicar_em_arquivo.
+    """
+    erros = []
+    novo = original
+
+    for op in ops:
+        acao = op.get("acao")
+        codigo_id = op.get("codigo_id")
+        codigo = blocos.get(codigo_id) if codigo_id else None
+
+        if acao == "arquivo":
+            if codigo is None:
+                erros.append(f"[{rel}] bloco de código '{codigo_id}' não encontrado.")
+                continue
+            novo = textwrap.dedent(codigo).strip("\n") + "\n"
+            continue
+
+        if acao == "trecho":
+            tipo = op.get("tipo")
+            alvo_nome = op.get("alvo", "")
+            posicao = op.get("posicao", "substituir")
+            ancora_id = op.get("ancora_id")
+            ancora = blocos.get(ancora_id) if ancora_id else None
+
+            if posicao not in ("substituir", "antes", "depois"):
+                erros.append(f"[{rel}] posição inválida em 'trecho': '{posicao}'.")
+                continue
+            if not ancora or not ancora.strip():
+                erros.append(f"[{rel}] âncora '{ancora_id}' não encontrada ou vazia.")
+                continue
+            # codigo_id é opcional só no caso de apagar (substituir por nada).
+            if codigo_id is not None and codigo is None:
+                erros.append(f"[{rel}] bloco de código '{codigo_id}' não encontrado.")
+                continue
+            if posicao in ("antes", "depois") and not (codigo and codigo.strip()):
+                erros.append(f"[{rel}] 'trecho' com posição '{posicao}' exige um código não-vazio.")
+                continue
+
+            if tipo == "arquivo":
+                no = None  # escopo = arquivo inteiro
+            else:
+                if alvo.suffix != ".py":
+                    erros.append(f"[{rel}] 'trecho' com tipo '{tipo}' exige arquivo .py; "
+                                 "para configs use \"tipo\": \"arquivo\".")
+                    continue
+                try:
+                    arvore = ast.parse(novo)
+                except SyntaxError as e:
+                    erros.append(f"[{rel}] não consegui parsear o estado atual do arquivo: {e} "
+                                 "(ações por nó exigem Python válido — corrija a sintaxe e rode de novo, "
+                                 "ou use \"acao\": \"arquivo\").")
+                    return original, original, erros
+                no = _encontrar_no(arvore, tipo, alvo_nome)
+                if no is None:
+                    erros.append(f"[{rel}] {tipo} '{alvo_nome}' não encontrado para ancorar o trecho.")
+                    continue
+
+            resultado, erro = _aplicar_trecho_no_texto(novo, no, ancora, codigo or "", posicao)
+            if erro:
+                erros.append(f"[{rel}] {tipo} '{alvo_nome or rel}': {erro}")
+                continue
+            novo = resultado
+            continue
+        if acao == "adicionar_import":
+            if alvo.suffix != ".py":
+                erros.append(f"[{rel}] 'adicionar_import' exige arquivo .py.")
+                continue
+            modulo = op.get("modulo")
+            nomes = op.get("nomes") or []
+            if not modulo or not isinstance(nomes, list) or not nomes:
+                erros.append(f"[{rel}] 'adicionar_import' exige 'modulo' (str) e "
+                             "'nomes' (lista não-vazia).")
+                continue
+            resultado, erro = _adicionar_import_no_texto(novo, modulo, nomes)
+            if erro:
+                erros.append(f"[{rel}] adicionar_import '{modulo}': {erro}")
+                continue
+            novo = resultado
+            continue
+
+        # Operações que dependem de AST exigem .py
+        if alvo.suffix != ".py":
+            erros.append(f"[{rel}] ação '{acao}' em arquivo não-Python; use \"acao\": \"arquivo\".")
+            continue
+
+        try:
+            arvore = ast.parse(novo)
+        except SyntaxError as e:
+            erros.append(f"[{rel}] não consegui parsear o estado atual do arquivo: {e}")
+            return original, original, erros
+
+        tipo = op.get("tipo")
+        alvo_nome = op.get("alvo", "")
+        no = _encontrar_no(arvore, tipo, alvo_nome)
+
+        if acao == "substituir":
+            if no is None:
+                erros.append(f"[{rel}] {tipo} '{alvo_nome}' não encontrado para substituir.")
+                continue
+            if codigo is None:
+                erros.append(f"[{rel}] bloco de código '{codigo_id}' não encontrado.")
+                continue
+            novo = _substituir_no_texto(novo, no, codigo)
+
+        elif acao == "adicionar":
+            if codigo is None:
+                erros.append(f"[{rel}] bloco de código '{codigo_id}' não encontrado.")
+                continue
+            if tipo == "metodo":
+                if "." not in alvo_nome:
+                    erros.append(f"[{rel}] para adicionar método use \"alvo\": \"Classe.metodo\".")
+                    continue
+                nome_classe, _ = alvo_nome.split(".", 1)
+                classe_no = _encontrar_classe(arvore, nome_classe)
+                if classe_no is None:
+                    erros.append(f"[{rel}] classe '{nome_classe}' não encontrada para inserir o método.")
+                    continue
+                if no is not None:  # _encontrar_no já achou o método -> existe
+                    erros.append(f"[{rel}] método '{alvo_nome}' já existe; use \"substituir\".")
+                    continue
+                novo = _adicionar_metodo_no_texto(novo, classe_no, codigo)
+            else:
+                if no is not None:
+                    erros.append(f"[{rel}] {tipo} '{alvo_nome}' já existe; use \"substituir\".")
+                    continue
+                novo = _adicionar_no_texto(novo, codigo)
+
+        else:
+            erros.append(f"[{rel}] ação desconhecida: '{acao}'.")
+
+    # Guarda-corpo: nunca devolve um .py que não parseia.
+    if alvo.suffix == ".py" and novo != original:
+        try:
+            ast.parse(novo)
+        except SyntaxError as e:
+            erros.append(f"[{rel}] resultado final ficou com sintaxe inválida; arquivo NÃO será alterado: {e}")
+            return original, original, erros
+
+    return original, novo, erros
+
+
+def _validar_comando(op: dict):
+    """Valida a forma de uma acao 'comando' (critério ii). Erro-como-dado, não executa.
+
+    Devolve (PassoComando, erro_ou_None). Checa tipos: comando string não-vazia;
+    shell suportado; espera_exit int ou ausente; espera_conter string ou ausente;
+    timeout int positivo ou ausente. Monta só o PEDIDO — a execução é da UI (5c).
+    """
+    comando = op.get("comando")
+    if not isinstance(comando, str) or not comando.strip():
+        return None, "acao 'comando' exige 'comando' (string não-vazia)."
+
+    shell = op.get("shell", "powershell")
+    if shell not in ("powershell", "pwsh"):
+        return None, f"shell '{shell}' não suportado (use 'powershell' ou 'pwsh')."
+
+    espera_exit = op.get("espera_exit")
+    if espera_exit is not None and not isinstance(espera_exit, int):
+        return None, "'espera_exit' deve ser inteiro ou ausente."
+
+    espera_conter = op.get("espera_conter")
+    if espera_conter is not None and not isinstance(espera_conter, str):
+        return None, "'espera_conter' deve ser string ou ausente."
+
+    timeout = op.get("timeout")
+    if timeout is not None and (not isinstance(timeout, int) or isinstance(timeout, bool) or timeout <= 0):
+        return None, "'timeout' deve ser inteiro positivo ou ausente."
+
+    return PassoComando(
+        comando=comando, shell=shell, descricao=op.get("descricao", ""),
+        espera_exit=espera_exit, espera_conter=espera_conter, timeout=timeout), None
+
+
+def _montar_passos(operacoes: list, blocos: dict, projeto_path: Path):
+    """Interpretador de sequência (modo C): percorre as operações na ORDEM do plano.
+
+    Encadeia edições ao mesmo arquivo em memória via _aplicar_ops_em_texto (núcleo
+    puro): a 2ª edição de um arquivo parte do que a 1ª produziu. Comandos NÃO são
+    executados aqui (efeito de mundo é da UI) e não alteram o estado — o core prepara
+    a sequência otimista completa; a UI a executa até onde os gates permitirem.
+
+    Devolve (passos, arquivos_result, estados_finais, erros_fatais):
+    - passos: lista ordenada de PassoPlano (edição ou comando), preservando a ordem
+      original do plano — é isto que honra o intercalamento com gates;
+    - arquivos_result: agregado por arquivo (uma entrada, diff disco->estado final),
+      para compatibilidade com quem lê `.arquivos` (histórico, GUI);
+    - estados_finais: dict rel -> texto final acumulado, que a UI grava no disco ao
+      percorrer os passos de edição (a 5c consome isto no executar_sequencia);
+    - erros_fatais: comando malformado ou op de edição sem 'arquivo'. Se não-vazio, a
+      preparação é abortada (o executar não grava nada).
+    """
+    passos = []
+    estados = {}            # rel -> texto acumulado em memória
+    originais = {}          # rel -> texto original em disco (base do diff agregado)
+    erros_por_arquivo = {}  # rel -> [erros de edição] (dict próprio, não misturado a estados)
+    ordem_arquivos = []     # 1ª aparição de cada arquivo editado (ordem estável do agregado)
+    erros_fatais = []
+
+    for i, op in enumerate(operacoes):
+        acao = op.get("acao")
+
+        if acao == "comando":
+            pc, erro = _validar_comando(op)
+            if erro:
+                erros_fatais.append(f"[passo {i}] {erro}")
+                continue
+            passos.append(PassoPlano(tipo="comando", ordem=i, comando=pc,
+                                     resultado_comando=ResultadoComando()))
+            continue
+
+        # Edição: exige 'arquivo'.
+        rel = op.get("arquivo")
+        if not rel:
+            erros_fatais.append(f"[passo {i}] operação de edição sem 'arquivo'.")
+            continue
+
+        alvo = projeto_path / rel
+        if rel not in estados:
+            texto = alvo.read_text(encoding="utf-8", errors="replace") if alvo.exists() else ""
+            estados[rel] = texto
+            originais[rel] = texto
+            erros_por_arquivo[rel] = []
+            ordem_arquivos.append(rel)
+
+        antes = estados[rel]
+        _orig, depois, erros_op = _aplicar_ops_em_texto(rel, antes, alvo, [op], blocos)
+        estados[rel] = depois
+        erros_por_arquivo[rel].extend(erros_op)
+        passos.append(PassoPlano(tipo="edicao", ordem=i, caminho=rel))
+
+    if erros_fatais:
+        return [], [], {}, erros_fatais
+
+    arquivos_result = []
+    for rel in ordem_arquivos:
+        diff = _gerar_diff(rel, originais[rel], estados[rel])
+        add, dels = _contar_mudancas(diff) if diff else (0, 0)
+        arquivos_result.append(ResultadoArquivoAplicado(
+            caminho=rel, adicionadas=add, removidas=dels, diff=diff,
+            gravado=False, backup_criado=False, erros=erros_por_arquivo[rel]))
+
+    return passos, arquivos_result, dict(estados), []

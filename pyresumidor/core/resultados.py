@@ -137,6 +137,7 @@ class ResultadoAplicar:
     passos: list[PassoPlano] = field(default_factory=list)   # sequência ordenada (edições + comandos); vazia em planos legados
     sequenciado: bool = False        # True = plano tinha comando(s) e rodou no modo C (execução sequenciada)
     parou_em: int | None = None      # índice do passo onde um gate abortou; None = rodou até o fim
+    estados_finais: dict = field(default_factory=dict)  # rel -> texto final (modo C); a UI grava a partir daqui
     def resumo_historico(self, gravados: int) -> dict:
         """Monta o dict de resumo que a GUI grava no histórico para um Aplicar.
 
