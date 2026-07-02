@@ -99,10 +99,30 @@ class PaginaEstatisticas(PaginaBase):
             tamanho = (f"<br>Tamanho atual (último mapa): "
                        f"<b>{s.ultimo_mapa['total_linhas']}</b> linha(s)")
 
+        # Top-3 arquivos do último mapa (maiores) — responde "quais arquivos", não só o total.
+        top_mapa = ""
+        if s.ultimo_mapa_por_arquivo:
+            maiores = sorted(s.ultimo_mapa_por_arquivo.items(),
+                             key=lambda kv: kv[1], reverse=True)[:3]
+            itens = " · ".join(f"{rel}: <b>{n}</b>" for rel, n in maiores)
+            top_mapa = f"<br><small>Maiores arquivos: {itens}</small>"
+
+        # Top-3 arquivos mais alterados no último aplicar (por add+rem).
+        top_aplicar = ""
+        if s.ultimo_aplicar_por_arquivo:
+            mais = sorted(s.ultimo_aplicar_por_arquivo.items(),
+                          key=lambda kv: (kv[1].get("add", 0) + kv[1].get("rem", 0)),
+                          reverse=True)[:3]
+            itens = " · ".join(
+                f"{rel}: <span style='color:#1e7e34'>+{d.get('add', 0)}</span>/"
+                f"<span style='color:#c0392b'>−{d.get('rem', 0)}</span>"
+                for rel, d in mais)
+            top_aplicar = f"<br><small>Último apply por arquivo: {itens}</small>"
+
         self._resumo.setText(
             f"<b>{s.total_execucoes}</b> execução(ões) · {linha_cmd}<br>"
             f"Linhas aplicadas: <span style='color:#1e7e34'>+{s.total_adicionadas}</span> / "
-            f"<span style='color:#c0392b'>−{s.total_removidas}</span>{tamanho}")
+            f"<span style='color:#c0392b'>−{s.total_removidas}</span>{tamanho}{top_mapa}{top_aplicar}")
 
         from pyresumidor.core.armazenamento import listar_historico
         linhas = []

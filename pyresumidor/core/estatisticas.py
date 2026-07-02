@@ -20,10 +20,18 @@ class EstatisticasProjeto:
     evolucao_linhas: list       # [(ts, total_linhas), ...] cronológico (gráfico)
     evolucao_arquivos: list     # [(ts, n_py + n_outros), ...] cronológico (gráfico)
     ultimo_mapa: dict = field(default_factory=dict)  # resumo do Mapear mais recente
+    ultimo_mapa_por_arquivo: dict = field(default_factory=dict)   # {rel: n_linhas} do mapa mais recente
+    ultimo_aplicar_por_arquivo: dict = field(default_factory=dict)  # {rel: {"add", "rem"}} do aplicar mais recente
 
 
 def calcular(gitignore_path: str) -> EstatisticasProjeto:
-    """Agrega o histórico do projeto. Devolve zeros/listas vazias se não houver nada."""
+    """Agrega o histórico do projeto. Devolve zeros/listas vazias se não houver nada.
+
+    Além dos agregados, expõe o breakdown por arquivo do Mapear e do Aplicar mais
+    recentes (ultimo_mapa_por_arquivo / ultimo_aplicar_por_arquivo). Ambos com
+    leitura tolerante: entradas antigas sem a chave de breakdown resultam em {},
+    sem quebrar nada (mesma filosofia de leitura-com-fallback da persistência).
+    """
     hist = listar_historico(gitignore_path)  # mais recente primeiro
 
     por_comando: dict = {}
@@ -31,6 +39,8 @@ def calcular(gitignore_path: str) -> EstatisticasProjeto:
     evolucao = []           # (ts, total_linhas) dos Mapear
     evolucao_arq = []       # (ts, n_py + n_outros) dos Mapear
     ultimo_mapa: dict = {}
+    ultimo_mapa_por_arquivo: dict = {}
+    ultimo_aplicar_por_arquivo: dict = {}
 
     for entrada in hist:
         if not isinstance(entrada, dict):
@@ -43,6 +53,10 @@ def calcular(gitignore_path: str) -> EstatisticasProjeto:
         if cmd == "aplicar":
             add += int(resumo.get("adicionadas", 0) or 0)
             rem += int(resumo.get("removidas", 0) or 0)
+            if not ultimo_aplicar_por_arquivo:  # 1º aplicar visto = mais recente
+                pa = resumo.get("por_arquivo")
+                if isinstance(pa, dict):
+                    ultimo_aplicar_por_arquivo = dict(pa)
 
         if cmd == "mapear":
             tl = resumo.get("total_linhas")
@@ -52,6 +66,9 @@ def calcular(gitignore_path: str) -> EstatisticasProjeto:
                 evolucao_arq.append((ts, n_arq))
             if not ultimo_mapa:   # hist decrescente -> 1º mapear visto é o mais recente
                 ultimo_mapa = dict(resumo)
+                lpa = resumo.get("linhas_por_arquivo")
+                if isinstance(lpa, dict):
+                    ultimo_mapa_por_arquivo = dict(lpa)
 
     evolucao.sort(key=lambda par: par[0])
     evolucao_arq.sort(key=lambda par: par[0])
@@ -64,4 +81,6 @@ def calcular(gitignore_path: str) -> EstatisticasProjeto:
         evolucao_linhas=evolucao,
         evolucao_arquivos=evolucao_arq,
         ultimo_mapa=ultimo_mapa,
+        ultimo_mapa_por_arquivo=ultimo_mapa_por_arquivo,
+        ultimo_aplicar_por_arquivo=ultimo_aplicar_por_arquivo,
     )

@@ -20,6 +20,21 @@ class ResultadoMapear:
     copiado: bool
     erros: list[str] = field(default_factory=list)
     avisos: list[str] = field(default_factory=list)
+    def resumo_historico(self) -> dict:
+        """Monta o dict de resumo que a GUI grava no histórico para um Mapear.
+
+        Centraliza aqui (no dataclass) o conhecimento de QUAIS campos entram no
+        histórico, para os sites de gravação (hoje só a GUI) não repetirem a lógica.
+        Mantém os campos agregados legados (total_linhas, n_py, n_outros) e ADICIONA
+        o breakdown por arquivo — registros antigos, sem essa chave, continuam
+        válidos e são lidos com dict vazio no lado do calcular.
+        """
+        return {
+            "total_linhas": self.total_linhas,
+            "n_py": len(self.arquivos_py),
+            "n_outros": len(self.arquivos_outros),
+            "linhas_por_arquivo": dict(self.linhas_por_arquivo),
+        }
 
 
 @dataclass
@@ -65,6 +80,25 @@ class ResultadoAplicar:
     caminho_html: str | None     # CLI ainda pode gerar; GUI ignora e usa os diffs
     erros: list[str] = field(default_factory=list)
     avisos: list[str] = field(default_factory=list)
+    def resumo_historico(self, gravados: int) -> dict:
+        """Monta o dict de resumo que a GUI grava no histórico para um Aplicar.
+
+        `gravados` é a contagem de arquivos efetivamente escritos (a página sabe
+        disso). Mantém os agregados legados (gravados, adicionadas, removidas,
+        aplicado) e ADICIONA o breakdown por arquivo {rel: {"add", "rem"}}, só dos
+        arquivos que tiveram diff — registros antigos sem essa chave seguem válidos.
+        """
+        por_arquivo = {
+            a.caminho: {"add": a.adicionadas, "rem": a.removidas}
+            for a in self.arquivos if a.diff
+        }
+        return {
+            "gravados": gravados,
+            "adicionadas": self.total_adicionadas,
+            "removidas": self.total_removidas,
+            "aplicado": True,
+            "por_arquivo": por_arquivo,
+        }
 
 
 class ErroEntrada(Exception):

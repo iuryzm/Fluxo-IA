@@ -248,15 +248,10 @@ class PaginaAplicar(PaginaBase):
                 f"<span style='color:#c0392b'>−{res.total_removidas}</span>{bk}{bloco_erros}{avisos}")
             self._botao_aplicar.setEnabled(False)
             self._texto_simulado = None
-            self._botao_aplicar.setEnabled(False)
-            self._texto_simulado = None
             try:
                 registrar_historico(
                     self._projeto.gitignore, "aplicar", True,
-                    {"gravados": len(gravados),
-                     "adicionadas": res.total_adicionadas,
-                     "removidas": res.total_removidas,
-                     "aplicado": True})
+                    res.resumo_historico(len(gravados)))
             except Exception:
                 pass
         else:

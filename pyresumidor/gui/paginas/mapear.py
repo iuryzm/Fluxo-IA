@@ -78,14 +78,9 @@ class PaginaMapear(PaginaBase):
 
         self._conteudo_mapa = res.conteudo
         self._botao_copiar.setEnabled(True)
-        self._conteudo_mapa = res.conteudo
-        self._botao_copiar.setEnabled(True)
         try:
             registrar_historico(
-                self._projeto.gitignore, "mapear", True,
-                {"total_linhas": res.total_linhas,
-                 "n_py": len(res.arquivos_py),
-                 "n_outros": len(res.arquivos_outros)})
+                self._projeto.gitignore, "mapear", True, res.resumo_historico())
         except Exception:
             pass  # registro de histórico nunca deve quebrar a operação
         avisos = ("<br><span style='color:#d35400'>⚠️ " + "<br>".join(res.avisos) + "</span>") if res.avisos else ""
