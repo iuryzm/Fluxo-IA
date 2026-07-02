@@ -53,6 +53,7 @@ Sua resposta deve conter DUAS partes:
     {{"acao": "adicionar",  "arquivo": "src/core.py", "tipo": "metodo", "alvo": "Motor.reset", "codigo_id": "b5"}},
     {{"acao": "trecho",     "arquivo": "src/core.py", "tipo": "metodo", "alvo": "Motor.run", "posicao": "substituir", "ancora_id": "a1", "codigo_id": "b6"}},
     {{"acao": "trecho",     "arquivo": "config.yaml", "tipo": "arquivo", "posicao": "depois", "ancora_id": "a2", "codigo_id": "b7"}},
+    {{"acao": "adicionar_import", "arquivo": "src/core.py", "modulo": "os.path", "nomes": ["join", "exists"]}},
     {{"acao": "arquivo",    "arquivo": "config.yaml", "codigo_id": "b8"}}
   ]
 }}
@@ -131,8 +132,24 @@ busca da âncora cobre o arquivo inteiro (não há nó AST para delimitar).
    indentação real. A busca ignora indentação/espaços para CASAR, mas a coluna que
    você escreve na âncora é a referência para posicionar o código novo — então copie a
    coluna de verdade. Prefira âncoras curtas e únicas no escopo (1 a 3 linhas).
+   A âncora vem SEMPRE do CÓDIGO EXTRAÍDO que você recebeu (a saída do extrair),
+   copiada byte a byte — NUNCA do MAPA. No mapa, a linha `**Dependências:**` é um
+   resumo com perdas: mostra só os 5 primeiros imports, achatados numa única linha
+   sem parênteses nem vírgulas de fim, e as assinaturas são reconstruídas sem `self`
+   nem tipos. Esse texto quase nunca existe igual no disco, então ancorar nele falha
+   silenciosamente. Na dúvida sobre a forma exata de um import multilinha, peça o
+   arquivo via `"arquivos_completos"` e copie a âncora de lá.
 8. Em "trecho" com "posicao": "antes"/"depois", o `codigo_id` é obrigatório e não pode
    ser vazio.
+9. Para ADICIONAR NOMES a um import (`from X import ...`), use SEMPRE a ação
+   dedicada `"adicionar_import"` — NUNCA `"trecho"`. Ela não usa âncora nem
+   `codigo_id`: você informa o módulo e a lista de nomes direto no plano, e o
+   script encontra o import via AST e insere os nomes que faltam, imune ao formato
+   do import no disco (linha única ou multilinha entre parênteses) — que é
+   justamente onde `"trecho"` falha com imports. Forma:
+   {{"acao": "adicionar_import", "arquivo": "x.py", "modulo": "pacote.modulo", "nomes": ["NOME_A", "NOME_B"]}}
+   Nomes devem ser identificadores simples (sem `as`, sem `.`). Para REMOVER nomes,
+   trocar aliases ou mexer em `import X`/imports relativos, continue usando `"trecho"`.
 """
 
 
@@ -264,6 +281,15 @@ def _aplicar_trecho_no_texto(fonte: str, no, ancora: str, codigo: str, posicao: 
     arquivo inteiro (caso de configs não-Python). A âncora precisa casar exatamente
     uma vez dentro da janela. Retorna (nova_fonte, erro_ou_None).
 
+    Casamento em duas etapas: primeiro o exato (linha a linha, via _normalizar_bloco);
+    se ele não achar nada, um fallback tolerante a quebras de linha (rec 2) colapsa
+    todo o whitespace — inclusive quebras de linha — dos dois lados, permitindo que
+    uma âncora reflada (mesmos tokens, quebras diferentes) case um construto
+    equivalente quebrado em várias linhas no disco (ex.: import parentético). O
+    fallback exige casamento único e prefere a menor janela por início, para não ser
+    guloso. Quando nada casa, o erro traz as linhas do escopo mais próximas da âncora
+    (rec 4), revelando como o disco difere do texto ancorado.
+
     Indentação (WYSIWYG): o código novo entra com a indentação que a IA escreveu,
     corrigida apenas pelo `delta` entre a coluna que ela deu à âncora e a coluna real
     da âncora no arquivo. Assim a indentação RELATIVA escrita pela IA é preservada —
@@ -297,18 +323,42 @@ def _aplicar_trecho_no_texto(fonte: str, no, ancora: str, codigo: str, posicao: 
     anc_norm = _normalizar_bloco(anc)
     n = len(anc_norm)
 
+    # Etapa 1: casamento exato, linha a linha (n linhas fixas).
     matches = []
     for i in range(win_ini, win_fim - n + 1):
         if _normalizar_bloco(linhas[i:i + n]) == anc_norm:
             matches.append(i)
 
-    if len(matches) == 0:
-        return fonte, "âncora não encontrada dentro do escopo do alvo."
     if len(matches) > 1:
         return fonte, (f"âncora ambígua: {len(matches)} ocorrências no escopo do alvo; "
                        "torne a âncora mais específica.")
 
-    m = matches[0]
+    if len(matches) == 1:
+        m, consumo = matches[0], n
+    else:
+        # Etapa 2 (rec 2): fallback tolerante a quebras de linha. Colapsa o whitespace
+        # dos dois lados e busca, por início, a MENOR janela que case a âncora.
+        alvo = _colapsar_ws("\n".join(anc))
+        por_inicio = {}
+        for i in range(win_ini, win_fim):
+            acc = ""
+            for j in range(1, (win_fim - i) + 1):
+                acc = _colapsar_ws("\n".join(linhas[i:i + j]))
+                if len(acc) > len(alvo):
+                    break            # só cresce; passou do tamanho, não casa mais
+                if acc == alvo:
+                    por_inicio[i] = j   # menor j para este início
+                    break
+        inicios = sorted(por_inicio)
+        if len(inicios) == 0:
+            return fonte, ("âncora não encontrada dentro do escopo do alvo."
+                           + _linhas_proximas(linhas, win_ini, win_fim, ancora))
+        if len(inicios) > 1:
+            return fonte, (f"âncora ambígua: {len(inicios)} ocorrências (casamento tolerante) "
+                           "no escopo do alvo; torne a âncora mais específica.")
+        m = inicios[0]
+        consumo = por_inicio[m]
+
     primeira = linhas[m]
     col_real = len(primeira) - len(primeira.lstrip())
 
@@ -322,11 +372,11 @@ def _aplicar_trecho_no_texto(fonte: str, no, ancora: str, codigo: str, posicao: 
         novo_codigo = []  # apagar (substituir por nada)
 
     if posicao == "substituir":
-        novas = linhas[:m] + novo_codigo + linhas[m + n:]
+        novas = linhas[:m] + novo_codigo + linhas[m + consumo:]
     elif posicao == "antes":
         novas = linhas[:m] + novo_codigo + linhas[m:]
     elif posicao == "depois":
-        novas = linhas[:m + n] + novo_codigo + linhas[m + n:]
+        novas = linhas[:m + consumo] + novo_codigo + linhas[m + consumo:]
     else:
         return fonte, f"posição inválida: '{posicao}' (use 'substituir', 'antes' ou 'depois')."
 
@@ -608,6 +658,22 @@ def aplicar_em_arquivo(rel: str, alvo: Path, ops: list, blocos: dict) -> tuple:
                 continue
             novo = resultado
             continue
+        if acao == "adicionar_import":
+            if alvo.suffix != ".py":
+                erros.append(f"[{rel}] 'adicionar_import' exige arquivo .py.")
+                continue
+            modulo = op.get("modulo")
+            nomes = op.get("nomes") or []
+            if not modulo or not isinstance(nomes, list) or not nomes:
+                erros.append(f"[{rel}] 'adicionar_import' exige 'modulo' (str) e "
+                             "'nomes' (lista não-vazia).")
+                continue
+            resultado, erro = _adicionar_import_no_texto(novo, modulo, nomes)
+            if erro:
+                erros.append(f"[{rel}] adicionar_import '{modulo}': {erro}")
+                continue
+            novo = resultado
+            continue
 
         # Operações que dependem de AST exigem .py
         if alvo.suffix != ".py":
@@ -846,3 +912,119 @@ def _deslocar_bloco(codigo: str, delta: int) -> str:
         return codigo
     shift = min(-delta, min(indents))
     return "\n".join(ln[shift:] if ln.strip() else "" for ln in linhas)
+
+
+def _colapsar_ws(texto: str) -> str:
+    """Colapsa todo run de whitespace (inclusive quebras de linha) em um único
+    espaço e remove as pontas.
+
+    Usado SÓ no casamento tolerante de âncora (rec 2): permite casar uma âncora
+    reflada — mesmos tokens, quebras de linha diferentes — contra o texto do disco.
+    Não influencia o posicionamento do código novo, que continua respeitando a
+    estrutura real das linhas.
+    """
+    return " ".join(texto.split())
+
+
+def _linhas_proximas(linhas: list, win_ini: int, win_fim: int, ancora: str, n: int = 3) -> str:
+    """Diagnóstico de âncora que não casou (rec 4).
+
+    Devolve as `n` linhas do escopo mais parecidas com a âncora (por similaridade),
+    cada uma com seu número de linha 1-based no arquivo, para revelar como o disco
+    difere do texto que a IA ancorou — o caso típico é um import que no disco está
+    parentético/multilinha e na âncora veio em linha única. Retorna '' se o escopo
+    não tiver linhas com conteúdo.
+    """
+    import difflib  # uso pontual, só neste caminho de erro
+    alvo = _colapsar_ws(ancora)
+    pontuadas = []
+    for i in range(win_ini, win_fim):
+        if not linhas[i].strip():
+            continue
+        escore = difflib.SequenceMatcher(None, alvo, _colapsar_ws(linhas[i])).ratio()
+        pontuadas.append((escore, i))
+    if not pontuadas:
+        return ""
+    pontuadas.sort(key=lambda t: t[0], reverse=True)
+    melhores = sorted(idx for _, idx in pontuadas[:n])  # reordena por posição no arquivo
+    corpo = "\n".join(f"    L{i + 1}: {linhas[i]}" for i in melhores)
+    return "\n  linhas mais próximas no escopo:\n" + corpo
+
+
+def _formatar_import_from(modulo: str, nomes: list) -> str:
+    """Formata um `from <modulo> import (...)` na forma canônica multilinha:
+    um nome por linha, com vírgula final e entre parênteses.
+
+    Forma ÚNICA e previsível, independente da quantidade de nomes — assim a IA
+    sempre vê o mesmo formato ao reler o arquivo (via `arquivos_completos`), sem a
+    ambiguidade linha-única × parentético que originou o bug de âncora em imports.
+    """
+    corpo = "".join(f"    {n},\n" for n in nomes)
+    return f"from {modulo} import (\n{corpo})"
+
+
+def _adicionar_import_no_texto(fonte: str, modulo: str, nomes: list):
+    """Insere `nomes` num `from <modulo> import ...` de nível de módulo, via AST.
+
+    Imune ao formato do import no disco (linha única ou multilinha entre
+    parênteses): localiza o nó ImportFrom pelo AST e reescreve o statement inteiro
+    na forma canônica (_formatar_import_from). Como não depende de casar texto,
+    resolve na origem a classe de bug em que a âncora de um import não casava por
+    diferença de formatação.
+
+    Comportamento:
+      - módulo já importado: acrescenta apenas os nomes ausentes (dedup; se todos
+        já existem, é no-op e devolve a fonte intacta);
+      - módulo ausente: cria o import novo após o último import de nível de módulo;
+        se não houver imports, após o docstring do módulo; sem docstring, no topo.
+
+    Escopo enxuto: só mexe em `from X import` absoluto (level 0). Não trata
+    `import X`, imports relativos nem aliases (`as`) — para esses, use `trecho`.
+    Retorna (nova_fonte, erro_ou_None).
+    """
+    for nome in nomes:
+        if not isinstance(nome, str) or not nome.isidentifier():
+            return fonte, (f"nome de import inválido: {nome!r}. Use identificadores "
+                           "simples (sem 'as', sem '.'); aliases e imports relativos "
+                           "ficam fora desta ação — use 'trecho'.")
+    try:
+        arvore = ast.parse(fonte)
+    except SyntaxError as e:
+        return fonte, f"não consegui parsear o arquivo para inserir o import: {e}"
+
+    linhas = fonte.splitlines()
+
+    alvo_no = None
+    ultimo_import_fim = None
+    for no in arvore.body:
+        if isinstance(no, (ast.Import, ast.ImportFrom)):
+            ultimo_import_fim = no.end_lineno
+        if (alvo_no is None and isinstance(no, ast.ImportFrom)
+                and no.level == 0 and (no.module or "") == modulo):
+            alvo_no = no  # primeiro `from <modulo> import` vence
+
+    if alvo_no is not None:
+        existentes = [a.name for a in alvo_no.names]
+        faltantes = [n for n in nomes if n not in existentes]
+        if not faltantes:
+            return fonte, None  # todos os nomes já presentes
+        bloco = _formatar_import_from(modulo, existentes + faltantes)
+        ini, fim = _span_do_no(alvo_no)  # 1-based inclusivo
+        novas = linhas[:ini - 1] + bloco.split("\n") + linhas[fim:]
+        return "\n".join(novas), None
+
+    bloco = _formatar_import_from(modulo, list(nomes))
+    if ultimo_import_fim is not None:
+        novas = linhas[:ultimo_import_fim] + bloco.split("\n") + linhas[ultimo_import_fim:]
+        return "\n".join(novas), None
+
+    corpo_mod = arvore.body
+    if (corpo_mod and isinstance(corpo_mod[0], ast.Expr)
+            and isinstance(getattr(corpo_mod[0], "value", None), ast.Constant)
+            and isinstance(corpo_mod[0].value.value, str)):
+        pos = corpo_mod[0].end_lineno
+        novas = linhas[:pos] + [""] + bloco.split("\n") + linhas[pos:]
+        return "\n".join(novas), None
+
+    novas = bloco.split("\n") + [""] + linhas
+    return "\n".join(novas), None

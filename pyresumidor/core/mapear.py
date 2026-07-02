@@ -360,6 +360,13 @@ def mapear_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, linha
         "`\"funcoes\"` (ex: `\"NomeDaClasse.nome_do_metodo\"`). Não peça o método pelo nome solto: "
         "ele é ambíguo (pode existir em várias classes) e não casa. Para a classe inteira, "
         "continue usando `\"classes\"`.\n"
+        "6. **Não copie texto do mapa como âncora de `\"trecho\"`.** O mapa é um "
+        "RESUMO com perdas: a linha `**Dependências:**` mostra só os 5 primeiros "
+        "imports (truncados com `, ...`) e achata imports multilinha numa única "
+        "linha, sem parênteses nem vírgulas — ou seja, esse texto quase nunca "
+        "existe igual no disco. Para ancorar com segurança, peça antes o código "
+        "via `\"funcoes\"`/`\"classes\"`/`\"arquivos_completos\"` e copie a âncora "
+        "dos BYTES EXATOS que receber de volta.\n"
     )
     mapear_completo.append(instrucoes_ia)
 
