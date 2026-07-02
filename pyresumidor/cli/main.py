@@ -260,10 +260,6 @@ def main(argv=None) -> int:
     return 1
 
 
-if __name__ == "__main__":
-    sys.exit(main())
-
-
 def _confirmador_terminal(lote: bool, todos_comandos):
     """Devolve um confirmador callable(PassoComando)->bool que pergunta no terminal.
 
@@ -404,3 +400,7 @@ def _rodar_sequenciado(res, projeto_path, args) -> int:
         timeout_padrao=args.timeout_comando, sem_backup=args.sem_backup)
 
     return _exibir_sequenciado(res, projeto_path, parou_em)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
