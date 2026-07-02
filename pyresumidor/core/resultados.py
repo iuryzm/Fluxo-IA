@@ -59,6 +59,60 @@ class ResultadoExtrair:
 
 
 @dataclass
+class PassoComando:
+    """Um comando a executar, tal como veio no plano (o PEDIDO — dado puro).
+
+    Calculado pelo core (que NÃO executa nada) e rodado pela UI. Os gates seguem o
+    critério (ii): `espera_exit` e/ou `espera_conter` são opcionais; presente(s),
+    a UI compara e marca divergência se não baterem — e a divergência PARA a
+    sequência do plano. Sem nenhum gate, o comando roda mas nunca aborta (é só
+    'execute e capture', ex.: verificação informativa após uma edição).
+    """
+    comando: str
+    shell: str = "powershell"          # por ora só powershell/pwsh; campo já previsto p/ futuro
+    descricao: str = ""                # o que o comando faz — exibido na confirmação
+    espera_exit: int | None = None     # gate: exit code esperado (None = não checa)
+    espera_conter: str | None = None   # gate: substring esperada em stdout+stderr (None = não checa)
+    timeout: int | None = None         # segundos; None = usa o default global da UI
+
+
+@dataclass
+class ResultadoComando:
+    """O EFEITO de um PassoComando, preenchido pela UI após rodar (ou não).
+
+    O core devolve isto 'vazio' (executado=False) ao preparar a sequência; a UI
+    preenche ao executar. `executado=False` cobre dois casos: você recusou na
+    confirmação, ou um gate anterior já havia abortado a sequência e este passo
+    nem chegou a rodar. `divergiu` só é True quando um gate (ii) falhou; `expirou`
+    quando estourou o timeout (que também conta como divergência para abortar).
+    """
+    executado: bool = False
+    exit_code: int | None = None
+    stdout: str = ""
+    stderr: str = ""
+    expirou: bool = False
+    divergiu: bool = False
+    motivo_divergencia: str = ""       # texto legível: por que parou (exit X != Y, faltou "...", timeout)
+
+
+@dataclass
+class PassoPlano:
+    """Item da LISTA ÚNICA ordenada que preserva a ordem do plano (edições + comandos).
+
+    Um passo é OU uma edição OU um comando (discriminado por `tipo`), nunca os dois.
+    É isto que honra o intercalamento com gates: a UI percorre `passos` em ordem,
+    grava as edições e roda os comandos, parando se um gate diverge. Edição
+    referencia o ResultadoArquivoAplicado por `caminho` (o objeto vive em
+    ResultadoAplicar.arquivos); comando carrega o pedido e o resultado juntos.
+    """
+    tipo: str                                  # "edicao" | "comando"
+    ordem: int                                 # posição no plano (0-based)
+    caminho: str | None = None                 # para tipo "edicao": rel do arquivo
+    comando: PassoComando | None = None        # para tipo "comando": o pedido
+    resultado_comando: ResultadoComando | None = None  # para tipo "comando": o efeito (UI preenche)
+
+
+@dataclass
 class ResultadoArquivoAplicado:
     caminho: str                 # rel
     adicionadas: int             # de _contar_mudancas(diff)
@@ -80,6 +134,9 @@ class ResultadoAplicar:
     caminho_html: str | None     # CLI ainda pode gerar; GUI ignora e usa os diffs
     erros: list[str] = field(default_factory=list)
     avisos: list[str] = field(default_factory=list)
+    passos: list[PassoPlano] = field(default_factory=list)   # sequência ordenada (edições + comandos); vazia em planos legados
+    sequenciado: bool = False        # True = plano tinha comando(s) e rodou no modo C (execução sequenciada)
+    parou_em: int | None = None      # índice do passo onde um gate abortou; None = rodou até o fim
     def resumo_historico(self, gravados: int) -> dict:
         """Monta o dict de resumo que a GUI grava no histórico para um Aplicar.
 
