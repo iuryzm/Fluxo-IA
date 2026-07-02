@@ -170,6 +170,12 @@ def executar_extracao(resposta_path_str: str, projeto_path_str: str, saida_path_
     """Lê os requisitos da IA, extrai classes/funções e grava o Markdown de saída.
 
     Retorna ResultadoExtrair: não imprime nem encerra o processo.
+
+    As instruções do aplicador são anexadas ao fim, a menos que sejam suprimidas por
+    QUALQUER uma das duas fontes (lógica OR): a flag da CLI (`incluir_instrucoes=False`,
+    via `--sem-instrucoes`) OU a chave `"sem_instrucoes": true` no JSON da IA — esta
+    última deixa a própria IA economizar tokens quando a tarefa é só de leitura e não
+    vai gerar plano de edição.
     """
     cb = chr(96) * 3
     projeto_path = Path(projeto_path_str).resolve()
@@ -184,6 +190,11 @@ def executar_extracao(resposta_path_str: str, projeto_path_str: str, saida_path_
     md_saida = ["# Código Extraído para a IA\n\n"]
     itens = []
     avisos = []
+
+    # A IA pode pedir para omitir as instruções do aplicador (economia de tokens em
+    # tarefas de leitura). Só desliga com True booleano de verdade, para um valor
+    # truthy não-booleano (ex.: a string "não") não suprimir por engano.
+    ia_pediu_sem_instrucoes = requisicoes.get("sem_instrucoes") is True
 
     # 1. Arquivos completos (encontrado confiável: existe no disco)
     for caminho_relativo in requisicoes.get("arquivos_completos", []):
@@ -257,15 +268,17 @@ def executar_extracao(resposta_path_str: str, projeto_path_str: str, saida_path_
         itens.append(ItemExtraido(caminho=caminho_relativo, tipo="trecho",
                                    nome=(alvo or fatia or None), encontrado=encontrado))
 
-    # 3. Instruções do aplicador
+    # 3. Instruções do aplicador (a menos que a CLI OU a IA peçam para omitir)
     instrucoes_anexadas = False
-    if incluir_instrucoes:
+    if incluir_instrucoes and not ia_pediu_sem_instrucoes:
         if INSTRUCOES_IA:
             md_saida.append("\n---\n")
             md_saida.append(INSTRUCOES_IA)
             instrucoes_anexadas = True
         else:
             avisos.append("INSTRUCOES_IA do aplicador indisponível; instruções NÃO anexadas.")
+    elif ia_pediu_sem_instrucoes and incluir_instrucoes:
+        avisos.append("A IA pediu 'sem_instrucoes': instruções do aplicador NÃO anexadas (economia de tokens).")
 
     conteudo = "\n".join(md_saida)
     # NB: total_linhas_extraidas = tamanho do md gerado (linhas de código por nó

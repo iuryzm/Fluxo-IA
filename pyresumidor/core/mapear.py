@@ -382,6 +382,12 @@ def mapear_repositorio(caminho_gitignore_str: str, arquivo_saida_str: str, linha
         "PARCIAL, marcado como tal: serve para LER/entender, NUNCA como âncora de "
         "`\"trecho\"` nem como definição completa para editar. Para editar, peça o nó "
         "inteiro via `\"funcoes\"`/`\"classes\"`.\n"
+        "8. Chave OPCIONAL de topo `\"sem_instrucoes\": true` (irmã de "
+        "`\"arquivos_completos\"`/`\"classes\"`/`\"funcoes\"`/`\"trechos\"`, NÃO um item "
+        "dentro delas): se a tarefa é só LER/entender o código e você NÃO vai devolver "
+        "um plano de edição, defina-a como `true` para não anexar as instruções do "
+        "aplicador à saída, economizando tokens. Se você VAI propor edições (plano + "
+        "blocos), omita a chave ou deixe `false` — você vai precisar das instruções.\n"
     )
     mapear_completo.append(instrucoes_ia)
 
