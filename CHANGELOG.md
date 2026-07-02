@@ -33,35 +33,42 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 ## [WorkingAt]
 - Docstrings are important.
 - 1º monte um plano de trabalho. Depois iremos executar.
-- Estou achando o número de linhas um pouco exagerado. Poderiamos contar por arquivo e fazer a estatística por arquivo também.
-- Possibilitar a IA de pedir um trecho do código por exemplo as 30 primeiras linhas do arquivo. Ou as 5 primeiras linhas de tal função. Ou as últimas linhas do arquivo ou da função ou do método. Isso pode ajudar a IA a entender os imports ou identação de um trecho, etc. O que vc acha? Acha interessante ter essa funcionalidade?
-- Relato de um problema:
-### RELATÓRIO — divergência entre código extraído e código em disco (aplicador.py / âncoras)
-**Sintoma:** operação trecho com âncora sobre uma linha de import falha repetidamente com "âncora não encontrada dentro do escopo do alvo", apesar da âncora ter sido copiada do código extraído fornecido à IA.
-
-**Causa raiz:** a ferramenta de extração de código (a que gera os blocos "Código Extraído para a IA") **normaliza imports multilinha para uma única linha** na saída exibida. No disco, o import está em formato parentético com um símbolo por linha:
-````py
-from componentes.fluxos_model import (
-    TIPO_ABRIR_ARQUIVOS,
-    ...
-    TIPOS_FILTRO,
-)
-````
-
-Mas foi exibido à IA como:
-````py
-from componentes.fluxos_model import TIPO_ABRIR_ARQUIVOS, ..., TIPOS_FILTRO
-````
-A IA, ao criar uma âncora `trecho` copiando de "TIPOS_COMBINADOR, TIPOS_FILTRO" (dois nomes na mesma linha, como exibido), produz um texto que não existe em disco (onde cada nome está em sua própria linha, terminando em vírgula). A busca de âncora — que "ignora indentação/espaços mas não reordena/quebra linhas" — não casa. Resultado: falha silenciosa e repetida, difícil de diagnosticar porque o código exibido "parece" conter a âncora.
-
-**Recomendações (qualquer uma resolve; idealmente as duas primeiras):**
-1. **Extração fiel:** a ferramenta de extração NÃO deve reformatar/normalizar o código exibido. Deve entregar os bytes exatos do disco (incluindo imports multilinha, quebras e vírgulas de fim de linha). Âncoras dependem de fidelidade textual; qualquer normalização na exibição quebra o contrato.
-2. **Robustez da busca de âncora a whitespace entre tokens:** fazer o casamento de âncora tolerar diferenças de quebra de linha dentro de uma mesma construção sintática — por exemplo, comparar após colapsar todos os runs de whitespace (incluindo `\n`) em um único espaço, dos dois lados. Isso permitiria que uma âncora escrita em linha única casasse um import multilinha equivalente. (Cuidado: só faz sentido para casamento; o posicionamento do código novo ainda precisa respeitar a estrutura.)
-3. **Preferir edições AST a** `trecho` para imports: o aplicador já suporta `substituir`/`adicionar` por AST para funções/classes/métodos. Um comando análogo para imports — algo como `{"acao": "adicionar_import", "arquivo": ..., "modulo": "componentes.fluxos_model", "nomes": ["TIPO_OPERACAO", "TIPOS_OPERACAO"]}` — que parseia o AST, encontra o `ImportFrom` daquele módulo e insere os nomes, seria imune a formatação (linha única vs. parentético). Imports são o caso onde `trecho` mais sofre com formatação, e um handler AST dedicado eliminaria essa classe de bug.
-4. **Diagnóstico melhor na falha:** quando uma âncora não casa, o aplicador poderia imprimir as N linhas do escopo do alvo que mais se aproximam da âncora (por similaridade), ajudando a IA a ver que o texto real difere. Hoje "âncora não encontrada" não revela como o arquivo difere.
 
 ## [Unreleased]
-- Sem itens.
+### Adicionado
+- Ação `adicionar_import` no aplicador: insere nomes num `from <módulo> import ...`
+  via AST, imune ao formato do import no disco (linha única ou parentético
+  multilinha). Não usa âncora nem `codigo_id` — recebe `modulo` e `nomes` direto
+  no plano. Emite o import sempre na forma canônica (um nome por linha, entre
+  parênteses), forma única e previsível para releituras futuras.
+- Chave `trechos` no protocolo de extração: pede as primeiras/últimas N linhas de
+  um alvo (`funcao` / `Classe` / `Classe.metodo`) ou do arquivo inteiro, no formato
+  `{"arquivo", "alvo"?, "fatia": "primeiras:N"|"ultimas:N"}`. Serve para a IA ver
+  imports, assinaturas ou indentação exatos sem pagar o arquivo todo em tokens. O
+  resultado sai marcado como recorte parcial e nunca deve ser usado como âncora.
+- Estatística por arquivo: o histórico passa a guardar o detalhamento por arquivo
+  de cada Mapear (`linhas_por_arquivo`) e Aplicar (`por_arquivo` com +/− por
+  arquivo). A página de Histórico/Estatísticas mostra os arquivos maiores do último
+  mapa e os mais alterados do último apply. Método `resumo_historico()` centraliza
+  nos dataclasses `ResultadoMapear`/`ResultadoAplicar` quais campos entram no
+  histórico.
+- Casamento tolerante de âncora no aplicador: quando o casamento exato (linha a
+  linha) falha, um fallback colapsa o whitespace (inclusive quebras de linha) dos
+  dois lados, permitindo casar uma âncora reflada contra um construto equivalente
+  quebrado em várias linhas no disco. Exige casamento único.
+- Diagnóstico de âncora que não casa: a mensagem de erro passa a listar as linhas
+  do escopo mais próximas da âncora (por similaridade), revelando como o disco
+  difere do texto ancorado.
+
+### Corrigido
+- Falha silenciosa ao ancorar `trecho` sobre imports, causada por copiar a âncora
+  da linha `**Dependências:**` do mapa (um resumo com perdas: truncado em 5 imports
+  e achatado numa linha) em vez dos bytes do disco. Resolvido em três camadas: a
+  ação `adicionar_import` (conserto de raiz), o casamento tolerante (rede de
+  segurança) e regras explícitas nas instruções do mapa e do aplicador orientando a
+  copiar âncoras sempre do código extraído, nunca do mapa.
+- Remoção de linhas duplicadas nos handlers `_ao_concluir` das páginas Mapear e
+  Aplicar (efeito colateral limpo da reescrita dos métodos).
 
 ## [1.5.0] - 2026.06.29
 ### Added
