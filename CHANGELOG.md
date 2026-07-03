@@ -40,7 +40,8 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
   principal de gravados está correta; o breakdown é caso de borda).
 
 ## [WorkingAt]
-- No itens.
+- Quando aplicamos algum comando via "Aplicar" esse comando tem que ser enviado levando em conta a localização do projeto que estamos trabalhando e não a do PyResumidor. Sendo assim deve ser verificado se o projeto que estamos trabalhando possui virtual environment e se sim devemos usa-lo.
+  - Uma IA tentou usar pytest mas o teste falhou pois não tinhamos polars instalado, mas o projeto possuia polars instalado no virtual envrironment.
 
 ### [Guidelines]
 - Docstrings are important.
