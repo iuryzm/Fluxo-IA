@@ -47,7 +47,15 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - 1º monte um plano de trabalho. Depois iremos executar.
 
 ## [Unreleased]
+- No itens.
+
+## [1.6.1] - 2026.07.03
 ### Added
+- Guarda da ação `arquivo` no `aplicador.py`: alvo EXISTENTE fora do allowlist
+  do `.gitignore` do projeto é recusado (erro-como-dado), pois era invisível no
+  mapa; válvula explícita `"sobrescrever": true` na operação; arquivo novo fora
+  do allowlist gera aviso. Regra 11 adicionada às `INSTRUCOES_IA` e testes dos
+  quatro quadrantes em `tests/test_aplicador.py`.
 - Detecção do virtual environment do projeto-alvo (`_localizar_venv` /
   `montar_ambiente` em `executor_sequencia.py`): nomes convencionais
   (`.venv`/`venv`/`env`) e fallback via `pyvenv.cfg` no 1º nível da raiz.

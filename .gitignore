@@ -14,36 +14,15 @@
 !conftest.py
 
 # Pacote
-!pyresumidor/__init__.py
-!pyresumidor/__main__.py
-!pyresumidor/core/__init__.py
-!pyresumidor/core/mapear.py
-!pyresumidor/core/extrator.py
-!pyresumidor/core/aplicador.py
-!pyresumidor/core/executor_sequencia.py
-!pyresumidor/core/clipboard.py
-!pyresumidor/core/resultados.py
-!pyresumidor/core/armazenamento.py
-!pyresumidor/core/estatisticas.py
-!pyresumidor/cli/__init__.py
-!pyresumidor/cli/main.py
+!pyresumidor/*.py
+!pyresumidor/core/*.py
+!pyresumidor/cli/*.py
 
 # GUI
-!pyresumidor/gui/__init__.py
-!pyresumidor/gui/__main__.py
-!pyresumidor/gui/app.py
-!pyresumidor/gui/janela.py
-!pyresumidor/gui/modelos/__init__.py
-!pyresumidor/gui/modelos/projeto.py
-!pyresumidor/gui/paginas/__init__.py
-!pyresumidor/gui/paginas/base.py
-!pyresumidor/gui/paginas/identificar.py
-!pyresumidor/gui/paginas/mapear.py
-!pyresumidor/gui/paginas/extrair.py
-!pyresumidor/gui/paginas/aplicar.py
-!pyresumidor/gui/paginas/estatisticas.py
-!pyresumidor/gui/workers/__init__.py
-!pyresumidor/gui/workers/worker_core.py
+!pyresumidor/gui/*.py
+!pyresumidor/gui/modelos/*.py
+!pyresumidor/gui/paginas/*.py
+!pyresumidor/gui/workers/*.py
 
 # Testes
 !tests/*.py

@@ -111,7 +111,7 @@ busca da âncora cobre o arquivo inteiro (não há nó AST para delimitar).
 ## Regras
 1. `acao`: "substituir" (nó existente), "adicionar" (nó novo), "trecho" (edição por
    âncora) ou "arquivo" (substitui/cria o arquivo inteiro — use para configs e
-   arquivos novos).
+   arquivos novos; antes de usá-la em arquivo EXISTENTE, veja a guarda na regra 11).
 2. `tipo`: "funcao", "classe", "metodo" ou "arquivo". Para "metodo", o `alvo` DEVE ser
    "NomeDaClasse.nome_do_metodo" — vale para "substituir"/"adicionar"/"trecho".
    "adicionar" com tipo "funcao"/"classe" insere no nível do módulo. Em "trecho",
@@ -164,6 +164,15 @@ busca da âncora cobre o arquivo inteiro (não há nó AST para delimitar).
    confirmação); proponha-os, mas não dependa de que rodem sem aprovação. Para editar
    o mesmo arquivo antes e depois de um comando, use duas operações de edição
    separadas — elas se encadeiam.
+11. GUARDA da acao "arquivo": se o alvo JÁ EXISTE no disco mas NÃO está no
+   allowlist (negações `!`) do .gitignore do projeto, a operação é RECUSADA —
+   o arquivo era invisível no mapa e sobrescrevê-lo apagaria conteúdo que você
+   nunca viu. Antes de usar "arquivo" num caminho que não veio de uma extração,
+   peça o arquivo via "arquivos_completos". Para autorizar deliberadamente a
+   sobrescrita, inclua "sobrescrever": true na operação:
+   {{"acao": "arquivo", "arquivo": "x.py", "codigo_id": "b1", "sobrescrever": true}}
+   Arquivo NOVO fora do allowlist não é bloqueado, mas gera um aviso (ele não
+   aparecerá nos próximos mapas até entrar no .gitignore).
 """
 
 
@@ -625,6 +634,10 @@ def executar(resposta_path_str: str, projeto_path_str: str,
     NÃO imprime, não abre navegador e não encerra o processo. Render de console,
     HTML e browser são responsabilidade da CLI.
 
+    Antes de qualquer aplicação, a guarda _validar_acoes_arquivo protege arquivos
+    invisíveis no mapa: acao 'arquivo' sobre alvo existente fora do allowlist do
+    .gitignore é erro fatal (válvula: "sobrescrever": true na operação).
+
     Dois modos:
     - LEGADO (sem acao 'comando'): agrupa por arquivo, calcula diffs, grava se
       `aplicar`. Atômico, com dry-run. Comportamento de sempre.
@@ -665,6 +678,16 @@ def executar(resposta_path_str: str, projeto_path_str: str,
                                 caminho_patch=None, caminho_html=None,
                                 avisos=["Nenhuma operação encontrada no plano (chave 'operacoes' vazia)."])
 
+    # Guarda da acao 'arquivo' (proteção de arquivos invisíveis no mapa): roda antes
+    # da bifurcação de modos, então cobre tanto o legado quanto o sequenciado.
+    erros_guarda, avisos_guarda = _validar_acoes_arquivo(operacoes, projeto_path)
+    avisos.extend(avisos_guarda)
+    if erros_guarda:
+        return ResultadoAplicar(sucesso=False, aplicado=False, arquivos=[],
+                                total_adicionadas=0, total_removidas=0,
+                                caminho_patch=None, caminho_html=None,
+                                erros=erros_guarda, avisos=avisos)
+
     sequenciado = any(op.get("acao") == "comando" for op in operacoes)
 
     # ----- MODO SEQUENCIADO (modo C): core prepara, UI executa. Não grava aqui. -----
@@ -680,8 +703,8 @@ def executar(resposta_path_str: str, projeto_path_str: str,
         return ResultadoAplicar(sucesso=True, aplicado=False, arquivos=arquivos_result,
                                 total_adicionadas=total_add, total_removidas=total_del,
                                 caminho_patch=None, caminho_html=None,
-                                avisos=["Plano com comando(s): preparado para execução sequenciada "
-                                        "pela interface (o core não executa comandos nem grava)."],
+                                avisos=avisos + ["Plano com comando(s): preparado para execução sequenciada "
+                                                 "pela interface (o core não executa comandos nem grava)."],
                                 passos=passos, sequenciado=True, estados_finais=estados_finais)
 
     # ----- MODO LEGADO: agrupa por arquivo, grava se `aplicar` (comportamento de sempre). -----
@@ -1189,3 +1212,82 @@ def _montar_passos(operacoes: list, blocos: dict, projeto_path: Path):
             gravado=False, backup_criado=False, erros=erros_por_arquivo[rel]))
 
     return passos, arquivos_result, dict(estados), []
+
+
+def _padroes_allowlist(projeto_path):
+    """Padrões DECLARADOS no allowlist do .gitignore do projeto-alvo, ou None.
+
+    Lê as negações (linhas '!', ignorando as que terminam em '/', como o mapear
+    faz) e devolve a lista de padrões CRUS — sem tocar o disco além do próprio
+    .gitignore. Diferente de mapear.extrair_arquivos_do_gitignore (que faz glob
+    e devolve arquivos EXISTENTES), aqui interessa o que está declarado: a
+    guarda precisa saber se um caminho ESTARIA no allowlist mesmo que o arquivo
+    ainda não exista. Devolve None se o .gitignore não existe/não é legível ou
+    se não há nenhuma negação — casos em que a guarda não se aplica.
+    """
+    gi = Path(projeto_path) / ".gitignore"
+    try:
+        linhas = gi.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    padroes = []
+    for linha in linhas:
+        linha = linha.strip()
+        if linha.startswith("!") and not linha.endswith("/"):
+            padroes.append(linha[1:])
+    return padroes or None
+
+
+def _validar_acoes_arquivo(operacoes, projeto_path):
+    """Guarda da acao 'arquivo': protege arquivos INVISÍVEIS no mapa. Erro-como-dado.
+
+    Motivação (incidente real): a acao 'arquivo' sobrescreve o alvo inteiro; se o
+    alvo existe no disco mas está FORA do allowlist do .gitignore, ele nunca
+    apareceu no mapa — a IA não sabe que ele existe e apagaria conteúdo não visto.
+
+    Matriz de decisão, por operação 'arquivo':
+    - existe no disco e casa o allowlist  -> ok (era visível no mapa);
+    - existe e NÃO casa                    -> ERRO fatal, a menos que a operação
+      traga "sobrescrever": true (válvula explícita, vira aviso);
+    - não existe e casa                    -> ok (arquivo novo já previsto);
+    - não existe e não casa                -> aviso (novo arquivo ficará fora dos
+      próximos mapas até entrar no allowlist).
+
+    Sem allowlist aplicável (_padroes_allowlist devolve None), nada bloqueia:
+    apenas um aviso informativo. O casamento usa Path(rel).match(padrao)
+    (glob da stdlib), aproximação da semântica do mapear — padrões de caminho
+    ('src/*.py') casam o caminho relativo e padrões de nome ('*.md') casam o
+    último componente. Devolve (erros, avisos); erros abortam o executar.
+    """
+    erros, avisos = [], []
+    ops_arquivo = [(i, op) for i, op in enumerate(operacoes)
+                   if op.get("acao") == "arquivo" and op.get("arquivo")]
+    if not ops_arquivo:
+        return erros, avisos
+
+    padroes = _padroes_allowlist(projeto_path)
+    if padroes is None:
+        avisos.append("Guarda da acao 'arquivo' não aplicada: o projeto não tem "
+                      ".gitignore legível com allowlist (negações '!').")
+        return erros, avisos
+
+    for i, op in ops_arquivo:
+        rel = op["arquivo"]
+        alvo = Path(projeto_path) / rel
+        listado = any(Path(rel).match(p) for p in padroes)
+
+        if alvo.exists() and not listado:
+            if op.get("sobrescrever") is True:
+                avisos.append(f"[passo {i}] '{rel}' existe fora do allowlist; "
+                              "sobrescrita autorizada explicitamente ('sobrescrever': true).")
+            else:
+                erros.append(
+                    f"[passo {i}] acao 'arquivo' recusada: '{rel}' EXISTE no disco mas "
+                    "NÃO está no allowlist do .gitignore — era invisível no mapa e a "
+                    "sobrescrita apagaria conteúdo não visto. Saídas: extraia o arquivo "
+                    "antes de reescrevê-lo; adicione-o ao allowlist; ou declare "
+                    "\"sobrescrever\": true na operação para autorizar deliberadamente.")
+        elif not alvo.exists() and not listado:
+            avisos.append(f"[passo {i}] '{rel}' é um arquivo novo fora do allowlist: "
+                          "não aparecerá nos próximos mapas até entrar no .gitignore.")
+    return erros, avisos

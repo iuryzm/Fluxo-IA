@@ -161,3 +161,74 @@ def test_adicionar_import_respeita_docstring_de_modulo():
     assert novo.index("from mod import") > novo.index('"""Modulo de teste."""')
     assert novo.index("from mod import") < novo.index("x = 1")
     compile(novo, "<teste>", "exec")
+
+
+def test_allowlist_le_negacoes(tmp_path):
+    """_padroes_allowlist devolve os padrões CRUS das negações, ignorando as de
+    diretório (terminadas em '/') e as linhas de ignore."""
+    (tmp_path / ".gitignore").write_text("*\n!*/\n!a.py\n!src/*.py\n", encoding="utf-8")
+    from pyresumidor.core.aplicador import _padroes_allowlist
+    assert _padroes_allowlist(tmp_path) == ["a.py", "src/*.py"]
+
+
+def test_allowlist_ausente_devolve_none(tmp_path):
+    """Sem .gitignore (ou sem negações), a guarda não se aplica: None."""
+    from pyresumidor.core.aplicador import _padroes_allowlist
+    assert _padroes_allowlist(tmp_path) is None
+    (tmp_path / ".gitignore").write_text("*.pyc\nbuild/\n", encoding="utf-8")
+    assert _padroes_allowlist(tmp_path) is None
+
+
+def test_guarda_existente_fora_do_allowlist_e_erro(tmp_path):
+    """Cenário do incidente: alvo existe no disco, invisível no mapa -> erro fatal."""
+    (tmp_path / ".gitignore").write_text("*\n!a.py\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("conteudo nunca visto\n", encoding="utf-8")
+    from pyresumidor.core.aplicador import _validar_acoes_arquivo
+    ops = [{"acao": "arquivo", "arquivo": "b.py", "codigo_id": "b1"}]
+    erros, avisos = _validar_acoes_arquivo(ops, tmp_path)
+    assert len(erros) == 1 and "b.py" in erros[0] and "allowlist" in erros[0]
+    assert avisos == []
+
+
+def test_guarda_sobrescrever_true_vira_aviso(tmp_path):
+    """A válvula 'sobrescrever': true fura o erro e vira aviso. Só True booleano."""
+    (tmp_path / ".gitignore").write_text("*\n!a.py\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("x\n", encoding="utf-8")
+    from pyresumidor.core.aplicador import _validar_acoes_arquivo
+    ops = [{"acao": "arquivo", "arquivo": "b.py", "codigo_id": "b1", "sobrescrever": True}]
+    erros, avisos = _validar_acoes_arquivo(ops, tmp_path)
+    assert erros == []
+    assert len(avisos) == 1 and "autorizada" in avisos[0]
+    # Valor truthy não-booleano NÃO autoriza.
+    ops = [{"acao": "arquivo", "arquivo": "b.py", "codigo_id": "b1", "sobrescrever": "sim"}]
+    erros, _avisos = _validar_acoes_arquivo(ops, tmp_path)
+    assert len(erros) == 1
+
+
+def test_guarda_listado_ou_novo_nao_bloqueia(tmp_path):
+    """Quadrantes benignos: existente listado (inclusive por glob) e novo listado
+    passam limpos; novo NÃO listado passa com aviso."""
+    (tmp_path / ".gitignore").write_text("*\n!a.py\n!src/*.py\n", encoding="utf-8")
+    (tmp_path / "a.py").write_text("x\n", encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "m.py").write_text("y\n", encoding="utf-8")
+    from pyresumidor.core.aplicador import _validar_acoes_arquivo
+    ops = [
+        {"acao": "arquivo", "arquivo": "a.py", "codigo_id": "b1"},        # existe, listado
+        {"acao": "arquivo", "arquivo": "src/m.py", "codigo_id": "b2"},    # existe, casa glob
+        {"acao": "arquivo", "arquivo": "src/novo.py", "codigo_id": "b3"}, # novo, casa glob
+        {"acao": "arquivo", "arquivo": "solto.txt", "codigo_id": "b4"},   # novo, fora
+    ]
+    erros, avisos = _validar_acoes_arquivo(ops, tmp_path)
+    assert erros == []
+    assert len(avisos) == 1 and "solto.txt" in avisos[0]
+
+
+def test_guarda_sem_gitignore_so_avisa(tmp_path):
+    """Projeto sem allowlist: a guarda não bloqueia nada, só um aviso informativo."""
+    (tmp_path / "b.py").write_text("x\n", encoding="utf-8")
+    from pyresumidor.core.aplicador import _validar_acoes_arquivo
+    ops = [{"acao": "arquivo", "arquivo": "b.py", "codigo_id": "b1"}]
+    erros, avisos = _validar_acoes_arquivo(ops, tmp_path)
+    assert erros == []
+    assert len(avisos) == 1 and "não aplicada" in avisos[0]
