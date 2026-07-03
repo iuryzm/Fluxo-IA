@@ -46,13 +46,4 @@
 !pyresumidor/gui/workers/worker_core.py
 
 # Testes
-!tests/__init__.py
-!tests/conftest.py
-!tests/test_mapear.py
-!tests/test_extrator.py
-!tests/test_aplicador.py
-!tests/test_armazenamento.py
-!tests/test_historico.py
-!tests/test_estatisticas.py
-!tests/test_executor_sequencia.py
-!tests/test_executor_empacotado.py
+!tests/*.py
