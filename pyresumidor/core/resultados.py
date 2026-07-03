@@ -85,6 +85,8 @@ class ResultadoComando:
     confirmação, ou um gate anterior já havia abortado a sequência e este passo
     nem chegou a rodar. `divergiu` só é True quando um gate (ii) falhou; `expirou`
     quando estourou o timeout (que também conta como divergência para abortar).
+    `ambiente` registra ONDE o comando rodou (rotulo de montar_ambiente: venv do
+    projeto-alvo ou ambiente do sistema); vazio = não executado ou registro antigo.
     """
     executado: bool = False
     exit_code: int | None = None
@@ -93,6 +95,7 @@ class ResultadoComando:
     expirou: bool = False
     divergiu: bool = False
     motivo_divergencia: str = ""       # texto legível: por que parou (exit X != Y, faltou "...", timeout)
+    ambiente: str = ""                 # rotulo do ambiente de execução (venv do alvo ou sistema)
 
 
 @dataclass

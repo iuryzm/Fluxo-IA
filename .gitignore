@@ -20,9 +20,11 @@
 !pyresumidor/core/mapear.py
 !pyresumidor/core/extrator.py
 !pyresumidor/core/aplicador.py
+!pyresumidor/core/executor_sequencia.py
 !pyresumidor/core/clipboard.py
 !pyresumidor/core/resultados.py
 !pyresumidor/core/armazenamento.py
+!pyresumidor/core/estatisticas.py
 !pyresumidor/cli/__init__.py
 !pyresumidor/cli/main.py
 
@@ -39,6 +41,7 @@
 !pyresumidor/gui/paginas/mapear.py
 !pyresumidor/gui/paginas/extrair.py
 !pyresumidor/gui/paginas/aplicar.py
+!pyresumidor/gui/paginas/estatisticas.py
 !pyresumidor/gui/workers/__init__.py
 !pyresumidor/gui/workers/worker_core.py
 
@@ -49,10 +52,7 @@
 !tests/test_extrator.py
 !tests/test_aplicador.py
 !tests/test_armazenamento.py
-!tests/test_armazenamento.py
-!tests/test_historico.py
 !tests/test_historico.py
 !tests/test_estatisticas.py
-!tests/test_estatisticas.py
-!pyresumidor/gui/paginas/estatisticas.py
-!pyresumidor/core/estatisticas.py
+!tests/test_executor_sequencia.py
+!tests/test_executor_empacotado.py

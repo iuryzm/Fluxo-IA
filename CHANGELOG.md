@@ -40,15 +40,32 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
   principal de gravados está correta; o breakdown é caso de borda).
 
 ## [WorkingAt]
-- Quando aplicamos algum comando via "Aplicar" esse comando tem que ser enviado levando em conta a localização do projeto que estamos trabalhando e não a do PyResumidor. Sendo assim deve ser verificado se o projeto que estamos trabalhando possui virtual environment e se sim devemos usa-lo.
-  - Uma IA tentou usar pytest mas o teste falhou pois não tinhamos polars instalado, mas o projeto possuia polars instalado no virtual envrironment.
+- No itens.
 
 ### [Guidelines]
 - Docstrings are important.
 - 1º monte um plano de trabalho. Depois iremos executar.
 
 ## [Unreleased]
-- No itens.
+### Added
+- Detecção do virtual environment do projeto-alvo (`_localizar_venv` /
+  `montar_ambiente` em `executor_sequencia.py`): nomes convencionais
+  (`.venv`/`venv`/`env`) e fallback via `pyvenv.cfg` no 1º nível da raiz.
+- Campo `ambiente` em `ResultadoComando`; a GUI (diálogo de autorização) e a
+  CLI exibem o ambiente de execução antes da confirmação dos comandos.
+- `tests/test_executor_sequencia.py`: detecção de venv, montagem do ambiente
+  e injeção do env/cwd no runner (runner fake, sem subprocess real).
+### Fixed
+- Comandos do Aplicar herdavam o ambiente do PyResumidor, não o do
+  projeto-alvo (ex.: `pytest` sem os pacotes do alvo, como polars). Agora o
+  subprocesso roda com PATH prefixado pelo venv do alvo, `VIRTUAL_ENV`
+  definido e `PYTHONHOME`/`PYTHONPATH` removidos.
+- `.gitignore`: `executor_sequencia.py` estava fora do allowlist (por isso
+  não aparecia no mapa); entradas de testes duplicadas removidas.
+- Runners fake dos testes do executor atualizados para a nova assinatura
+  com `env`; `tests/test_executor_sequencia.py` refundido (testes originais
+  de gate/orquestração/fumaça + novos de venv) e
+  `tests/test_executor_empacotado.py` adicionado ao allowlist do `.gitignore`.
 
 ## [1.6.0] - 2026.07.02
 ### Adicionado

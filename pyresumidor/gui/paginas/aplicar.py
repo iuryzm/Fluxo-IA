@@ -401,15 +401,19 @@ class PaginaAplicar(PaginaBase):
         """Slot do botão 'Executar sequência' (modo C): diálogo de lote (opt-in) e,
         se confirmado, dispara o worker que grava as edições e roda os comandos.
 
-        O diálogo é o ÚNICO ponto de decisão humana: lista todos os comandos com aviso
-        de que rodam na máquina. Confirmar = autorizar o lote; o confirmador passado ao
-        executor é sempre-sim (a decisão já foi tomada aqui). Cancelar = nada roda.
+        O diálogo é o ÚNICO ponto de decisão humana: lista todos os comandos, o
+        AMBIENTE em que vão rodar (venv do projeto-alvo, se houver, ou sistema) e o
+        aviso de que rodam na máquina. Confirmar = autorizar o lote; o confirmador
+        passado ao executor é sempre-sim (a decisão já foi tomada aqui). Cancelar =
+        nada roda.
         """
         if self._ultimo_res is None or not self._ultimo_res.sequenciado:
             return
         comandos = [p.comando for p in self._ultimo_res.passos if p.tipo == "comando"]
         if not comandos:
             return
+
+        _env, rotulo_ambiente = executor_sequencia.montar_ambiente(self._projeto.raiz)
 
         linhas = []
         for i, pc in enumerate(comandos):
@@ -423,6 +427,7 @@ class PaginaAplicar(PaginaBase):
         cx.setText(
             f"Este plano executará {len(comandos)} comando(s) na SUA máquina, via PowerShell:\n\n"
             f"{corpo}\n\n"
+            f"Ambiente de execução: {rotulo_ambiente}\n\n"
             "Os comandos rodam com as suas permissões. Edições serão gravadas (com .bak) "
             "na ordem do plano; se um comando com gate divergir, a sequência para.\n\n"
             "Autorizar a execução de TODOS os comandos acima?")

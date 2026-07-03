@@ -377,9 +377,10 @@ def _rodar_sequenciado(res, projeto_path, args) -> int:
     """Orquestra a execução sequenciada (modo C) na CLI: opt-in, confirmação, execução.
 
     O core (aplicador.executar) já preparou `res` (passos + estados_finais). Aqui a UI:
-    checa o opt-in (--permitir-comandos); monta o confirmador de terminal; chama o
-    executor (única parte que grava e roda); e renderiza. Sem --permitir-comandos, o
-    plano é recusado sem tocar nada.
+    checa o opt-in (--permitir-comandos); mostra o AMBIENTE de execução (venv do
+    projeto-alvo, se houver); monta o confirmador de terminal; chama o executor
+    (única parte que grava e roda); e renderiza. Sem --permitir-comandos, o plano
+    é recusado sem tocar nada.
     """
     if not args.permitir_comandos:
         print("\033[1;31m⛔ Este plano contém comando(s) a executar.\033[0m")
@@ -391,6 +392,9 @@ def _rodar_sequenciado(res, projeto_path, args) -> int:
                 desc = f" — {passo.comando.descricao}" if passo.comando.descricao else ""
                 print(f"     • {passo.comando.comando}{desc}")
         return 1
+
+    _env, rotulo_ambiente = executor_sequencia.montar_ambiente(projeto_path)
+    print(f"\033[36m🐍 Ambiente de execução: {rotulo_ambiente}\033[0m")
 
     comandos = [p.comando for p in res.passos if p.tipo == "comando"]
     confirmador = _confirmador_terminal(args.confirmar_lote, comandos)
