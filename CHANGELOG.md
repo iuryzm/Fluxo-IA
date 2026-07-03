@@ -26,13 +26,30 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
   - Tratamento de bordas e ajustes visuais conforme o uso real revelar.
 - Alinhar o piso de Python real: o projeto roda em 3.14, mas `requires-python`
   declara `>=3.9` sem CI que verifique — decidir se mantém a promessa ou sobe o piso.
+- `trechos` não alcança atribuições de módulo por nome (só nós de função/classe);
+  ver constantes longas (ex.: INSTRUCOES_IA) exige fatia-de-arquivo sem "alvo" ou
+  "arquivos_completos". Estender o extrator para resolver alvos do tipo Assign.
+- O pipeline não insere whitespace puro (linhas em branco isoladas): o
+  indexar_blocos_codigo remove linhas em branco das pontas dos blocos, então
+  edições só-de-espaçamento precisam ser manuais.
+- `adicionar` de função/método num arquivo que termina em `if __name__ ==
+  "__main__"` insere a definição depois do guard; em arquivos com guard de entrada,
+  inserir por âncora antes dele ou reordenar.
+- No histórico de uma sequência (modo C) interrompida por um gate, o breakdown
+  por-arquivo pode listar arquivos preparados mas não gravados (a contagem
+  principal de gravados está correta; o breakdown é caso de borda).
 
 ## [WorkingAt]
+- No itens.
+
+### [Guidelines]
 - Docstrings are important.
 - 1º monte um plano de trabalho. Depois iremos executar.
-- Colocar botão ? em Extrair e Aplicar mostrando exemplos.
 
 ## [Unreleased]
+- No itens.
+
+## [1.6.0] - 2026.07.02
 ### Adicionado
 - Ação `adicionar_import` no aplicador: insere nomes num `from <módulo> import ...`
   via AST, imune ao formato do import no disco (linha única ou parentético
@@ -57,7 +74,6 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - Diagnóstico de âncora que não casa: a mensagem de erro passa a listar as linhas
   do escopo mais próximas da âncora (por similaridade), revelando como o disco
   difere do texto ancorado.
-### Adicionado
 - Modo sequenciado (modo C) no aplicar: o plano pode conter ações `comando` que
   executam comandos PowerShell, intercaladas com as edições e executadas na ordem do
   plano. Comandos podem ter gates (`espera_exit`/`espera_conter`): se o resultado
@@ -71,6 +87,10 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - Chave `sem_instrucoes` no JSON de extração: a IA pode pedir para omitir as instruções
   do aplicador da saída do extrair, economizando tokens em tarefas só de leitura. A
   supressão respeita OR entre essa chave e a flag `--sem-instrucoes` da CLI.
+- Botão de ajuda ("?") nas páginas Extrair e Aplicar: abre um diálogo com um
+  exemplo do formato esperado (JSON de extração na página Extrair; plano + blocos
+  de código e as cinco ações na página Aplicar), em fonte monoespaçada e copiável.
+  Helper `_mostrar_ajuda` compartilhado na PaginaBase.
 
 ### Corrigido
 - Falha silenciosa ao ancorar `trecho` sobre imports, causada por copiar a âncora
