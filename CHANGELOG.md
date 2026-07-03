@@ -30,9 +30,7 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 ## [WorkingAt]
 - Docstrings are important.
 - 1º monte um plano de trabalho. Depois iremos executar.
-- Em Aplicar dar a possibilidade da IA enviar comandos powershell.
-  - Para cada comando capturar a sua saída e deixar de uma forma para já enviar para a IA.
-- Avisa a IA que pode pedir para extrair código sem anexar as instruções do aplicador à saída, caso isso seja desejável para utilizar menos tokens.
+- Colocar botão ? em Extrair e Aplicar mostrando exemplos.
 
 ## [Unreleased]
 ### Adicionado
@@ -59,6 +57,20 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - Diagnóstico de âncora que não casa: a mensagem de erro passa a listar as linhas
   do escopo mais próximas da âncora (por similaridade), revelando como o disco
   difere do texto ancorado.
+### Adicionado
+- Modo sequenciado (modo C) no aplicar: o plano pode conter ações `comando` que
+  executam comandos PowerShell, intercaladas com as edições e executadas na ordem do
+  plano. Comandos podem ter gates (`espera_exit`/`espera_conter`): se o resultado
+  divergir, a sequência para e as operações seguintes não rodam. Edições encadeiam em
+  memória — o mesmo arquivo pode ser editado antes e depois de um comando.
+- Execução com opt-in obrigatório e confirmação humana: na CLI via `--permitir-comandos`
+  (confirmação por comando ou em lote com `--confirmar-lote`, timeout configurável por
+  `--timeout-comando`); na GUI via diálogo de lote antes de rodar. Sem autorização
+  explícita, nada é executado. A saída de cada comando (stdout/stderr/exit) é capturada
+  e apresentada, pronta para colar de volta no chat com a IA.
+- Chave `sem_instrucoes` no JSON de extração: a IA pode pedir para omitir as instruções
+  do aplicador da saída do extrair, economizando tokens em tarefas só de leitura. A
+  supressão respeita OR entre essa chave e a flag `--sem-instrucoes` da CLI.
 
 ### Corrigido
 - Falha silenciosa ao ancorar `trecho` sobre imports, causada por copiar a âncora
@@ -69,6 +81,13 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
   copiar âncoras sempre do código extraído, nunca do mapa.
 - Remoção de linhas duplicadas nos handlers `_ao_concluir` das páginas Mapear e
   Aplicar (efeito colateral limpo da reescrita dos métodos).
+
+### Interno
+- Arquitetura "core prepara, UI executa": o core monta a sequência de passos (edições
+  com diffs + comandos com gates) e os estados finais, sem tocar o mundo; a execução
+  (gravar arquivos, rodar comandos) fica isolada em `executor_sequencia`, a única parte
+  com efeito colateral, chamada pela UI com um confirmador. `aplicar_em_arquivo` foi
+  refatorado num núcleo puro (`_aplicar_ops_em_texto`) para permitir o encadeamento.
 
 ## [1.5.0] - 2026.06.29
 ### Added

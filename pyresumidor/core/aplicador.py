@@ -150,6 +150,20 @@ busca da âncora cobre o arquivo inteiro (não há nó AST para delimitar).
    {{"acao": "adicionar_import", "arquivo": "x.py", "modulo": "pacote.modulo", "nomes": ["NOME_A", "NOME_B"]}}
    Nomes devem ser identificadores simples (sem `as`, sem `.`). Para REMOVER nomes,
    trocar aliases ou mexer em `import X`/imports relativos, continue usando `"trecho"`.
+10. Você pode incluir na lista `"operacoes"` ações do tipo `"comando"` para
+   EXECUTAR comandos (PowerShell) — por exemplo, rodar os testes após uma edição.
+   Forma: {{"acao": "comando", "comando": "pytest -q", "descricao": "...",
+   "espera_exit": 0, "espera_conter": "passed", "timeout": 120}}. Só `"comando"` é
+   obrigatório; `"descricao"` explica o comando ao usuário; `"espera_exit"` e/ou
+   `"espera_conter"` são GATES: se o resultado divergir (exit diferente, ou a saída
+   não contém o texto), a sequência PARA ali e as operações seguintes não rodam —
+   use isto para abortar se um teste falhar. Sem gate, o comando roda e a sequência
+   segue. As operações são executadas NA ORDEM em que aparecem, intercalando edições
+   e comandos: uma edição antes de um comando já está gravada quando o comando roda.
+   IMPORTANTE: comandos só rodam se o USUÁRIO autorizar explicitamente (opt-in por
+   confirmação); proponha-os, mas não dependa de que rodem sem aprovação. Para editar
+   o mesmo arquivo antes e depois de um comando, use duas operações de edição
+   separadas — elas se encadeiam.
 """
 
 
