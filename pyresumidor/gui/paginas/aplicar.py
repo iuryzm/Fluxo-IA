@@ -37,6 +37,15 @@ class PaginaAplicar(PaginaBase):
         super().__init__()
         layout = self.layout()
         idx = layout.indexOf(self._estado) + 1
+        self._botao_ajuda = QPushButton("?")
+        self._botao_ajuda.setFixedWidth(28)
+        self._botao_ajuda.setToolTip("Ver um exemplo de plano + blocos de código.")
+        self._botao_ajuda.clicked.connect(self._mostrar_exemplo)
+        _linha_ajuda = QHBoxLayout()
+        _linha_ajuda.addStretch()
+        _linha_ajuda.addWidget(self._botao_ajuda)
+        layout.insertLayout(idx, _linha_ajuda)
+        idx += 1
 
         self._campo_plano = QTextEdit()
         self._campo_plano.setPlaceholderText('Plano (JSON): {"operacoes": [...]} — sem crases')
@@ -502,3 +511,41 @@ class PaginaAplicar(PaginaBase):
         self._botao_executar_seq.setEnabled(True)
         self._resultado.setText(
             f"<span style='color:#c0392b'>❌ Falha ao executar a sequência: {msg}</span>")
+
+    def _mostrar_exemplo(self):
+        """Mostra um exemplo de plano + blocos aceitos nesta página.
+
+        NOTA DE MANUTENÇÃO: mantenha este exemplo em sincronia com as regras do
+        INSTRUCOES_IA do aplicador (pyresumidor/core/aplicador.py). Se um formato de
+        ação mudar lá, atualize aqui — um exemplo desatualizado ensina o errado.
+        """
+        exemplo = (
+            "Cole o PLANO no campo de plano e os BLOCOS DE CÓDIGO no campo de código.\n\n"
+            "PLANO (JSON):\n"
+            "{\n"
+            '  "operacoes": [\n'
+            '    {"acao": "substituir", "arquivo": "x.py", "tipo": "funcao", "alvo": "minha_funcao", "codigo_id": "b1"},\n'
+            '    {"acao": "trecho", "arquivo": "x.py", "tipo": "funcao", "alvo": "outra", "posicao": "depois", "ancora_id": "a1", "codigo_id": "b2"},\n'
+            '    {"acao": "adicionar", "arquivo": "x.py", "tipo": "metodo", "alvo": "Classe.novo_metodo", "codigo_id": "b3"},\n'
+            '    {"acao": "adicionar_import", "arquivo": "x.py", "modulo": "os.path", "nomes": ["join"]},\n'
+            '    {"acao": "comando", "comando": "pytest -q", "descricao": "roda os testes", "espera_exit": 0}\n'
+            "  ]\n"
+            "}\n\n"
+            "BLOCOS DE CÓDIGO (campo separado):\n"
+            "# --- id=b1 ---\n"
+            "def minha_funcao():\n"
+            "    return 42\n"
+            "# --- id=a1 ---\n"
+            "    linha_ancora_existente_copiada_do_codigo\n"
+            "# --- id=b2 ---\n"
+            "    codigo_novo_a_inserir\n\n"
+            "Ações:\n"
+            "• substituir — troca um nó (funcao/classe/metodo) inteiro pelo codigo_id.\n"
+            "• trecho — insere/substitui relativo a uma âncora (copie a âncora do CÓDIGO\n"
+            "  extraído, byte a byte, nunca do mapa).\n"
+            "• adicionar — cria um nó novo (funcao/classe/metodo) que ainda não existe.\n"
+            "• adicionar_import — acrescenta nomes a um import, sem âncora.\n"
+            "• comando — executa PowerShell (só roda com sua autorização; pode ter gates\n"
+            "  espera_exit/espera_conter que param a sequência se divergir)."
+        )
+        self._mostrar_ajuda("Exemplo — plano de aplicação", exemplo)

@@ -6,7 +6,13 @@ SEMPRE do campo visível — não do clipboard às cegas; o botão 'colar' é s�
 conveniência que preenche o campo.
 """
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QPushButton, QLabel, QTextEdit, QCheckBox
+from PySide6.QtWidgets import (
+    QPushButton,
+    QLabel,
+    QTextEdit,
+    QCheckBox,
+    QHBoxLayout,
+)
 
 from pyresumidor.gui.paginas.base import PaginaBase
 from pyresumidor.gui.workers import rodar_em_thread
@@ -26,6 +32,15 @@ class PaginaExtrair(PaginaBase):
         super().__init__()
         layout = self.layout()
         idx = layout.indexOf(self._estado) + 1
+        self._botao_ajuda = QPushButton("?")
+        self._botao_ajuda.setFixedWidth(28)
+        self._botao_ajuda.setToolTip("Ver um exemplo do JSON de extração.")
+        self._botao_ajuda.clicked.connect(self._mostrar_exemplo)
+        _linha_ajuda = QHBoxLayout()
+        _linha_ajuda.addStretch()
+        _linha_ajuda.addWidget(self._botao_ajuda)
+        layout.insertLayout(idx, _linha_ajuda)
+        idx += 1
 
         self._campo = QTextEdit()
         self._campo.setPlaceholderText("Cole aqui a resposta da IA (JSON)…")
@@ -167,3 +182,38 @@ class PaginaExtrair(PaginaBase):
         self._conteudo_saida = None
         self._botao_copiar.setEnabled(False)
         self._botao_copiar.setText("Copiar resultado")
+
+    def _mostrar_exemplo(self):
+        """Mostra um exemplo do JSON de extração aceito nesta página.
+
+        NOTA DE MANUTENÇÃO: mantenha este exemplo em sincronia com as regras do
+        `instrucoes_ia` do mapear (pyresumidor/core/mapear.py). Se um formato de
+        extração mudar lá, atualize aqui — um exemplo desatualizado ensina o errado.
+        """
+        exemplo = (
+            "Cole no campo acima um JSON como este (peça à IA que o gere a partir do mapa):\n\n"
+            "{\n"
+            '  "arquivos_completos": [\n'
+            '    "caminho/relativo/config.yaml"\n'
+            "  ],\n"
+            '  "classes": {\n'
+            '    "pacote/modulo.py": ["NomeDaClasse"]\n'
+            "  },\n"
+            '  "funcoes": {\n'
+            '    "pacote/modulo.py": ["nome_funcao", "NomeDaClasse.nome_metodo"]\n'
+            "  },\n"
+            '  "trechos": [\n'
+            '    {"arquivo": "pacote/modulo.py", "alvo": "NomeDaClasse.metodo", "fatia": "primeiras:5"},\n'
+            '    {"arquivo": "pacote/modulo.py", "fatia": "primeiras:15"}\n'
+            "  ],\n"
+            '  "sem_instrucoes": false\n'
+            "}\n\n"
+            "Dicas:\n"
+            "• arquivos_completos: o arquivo inteiro (use com parcimônia; gasta contexto).\n"
+            "• classes / funcoes: só os nós que precisa. Método = \"Classe.metodo\".\n"
+            "• trechos: primeiras/últimas N linhas de um alvo (ou do arquivo, sem \"alvo\") —\n"
+            "  para VER imports/assinaturas sem pagar o arquivo todo. É recorte, não âncora.\n"
+            "• sem_instrucoes: true omite as instruções do aplicador (economiza tokens em\n"
+            "  tarefas só de leitura)."
+        )
+        self._mostrar_ajuda("Exemplo — JSON de extração", exemplo)
