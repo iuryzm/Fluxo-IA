@@ -87,6 +87,9 @@ class PaginaAplicar(PaginaBase):
         # Permite selecionar e copiar o texto de avisos/erros com o mouse.
         self._resultado.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
+        self._botao_copiar_aviso = QPushButton("📋 Copiar aviso")
+        self._botao_copiar_aviso.clicked.connect(self._copiar_aviso)
+
         self._diff = QTextEdit()
         self._diff.setReadOnly(True)
         self._diff.setFont(QFont("Consolas", 9))
@@ -107,8 +110,9 @@ class PaginaAplicar(PaginaBase):
         layout.insertLayout(idx + 6, linha_acoes)
         layout.insertWidget(idx + 7, self._botao_executar_seq)
         layout.insertWidget(idx + 8, self._resultado)
-        layout.insertWidget(idx + 9, self._diff)
-        layout.insertWidget(idx + 10, self._saida_cmd)
+        layout.insertWidget(idx + 9, self._botao_copiar_aviso)
+        layout.insertWidget(idx + 10, self._diff)
+        layout.insertWidget(idx + 11, self._saida_cmd)
 
         self._texto_simulado = None
         self._ultimo_res = None
@@ -116,7 +120,7 @@ class PaginaAplicar(PaginaBase):
 
         self._botao_limpar = QPushButton("Limpar campos")
         self._botao_limpar.clicked.connect(self._limpar)
-        layout.insertWidget(idx + 11, self._botao_limpar)
+        layout.insertWidget(idx + 12, self._botao_limpar)
 
     def _montar_texto(self):
         plano = self._campo_plano.toPlainText().strip()
@@ -341,6 +345,7 @@ class PaginaAplicar(PaginaBase):
             self._botao_executar_seq.setEnabled(False)
             self._saida_cmd.setVisible(False)
             self._resultado.setText("")
+            self._botao_copiar_aviso.setText("📋 Copiar aviso")
             self._diff.setVisible(False)
             self._campo_plano.clear()
             self._campo_codigo.clear()
@@ -349,6 +354,7 @@ class PaginaAplicar(PaginaBase):
         self._campo_plano.clear()
         self._campo_codigo.clear()
         self._resultado.setText("")
+        self._botao_copiar_aviso.setText("📋 Copiar aviso")
         self._diff.setVisible(False)
         self._texto_simulado = None
         self._ultimo_res = None

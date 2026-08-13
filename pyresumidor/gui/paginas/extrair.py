@@ -65,6 +65,12 @@ class PaginaExtrair(PaginaBase):
         self._resultado = QLabel("")
         self._resultado.setWordWrap(True)
         self._resultado.setTextFormat(Qt.TextFormat.RichText)
+        # Permite selecionar e copiar o texto de avisos/erros com o mouse (além do
+        # botão dedicado abaixo).
+        self._resultado.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+
+        self._botao_copiar_aviso = QPushButton("📋 Copiar aviso")
+        self._botao_copiar_aviso.clicked.connect(self._copiar_aviso)
 
         layout.insertWidget(idx, self._campo)
         layout.insertWidget(idx + 1, self._botao_colar)
@@ -72,13 +78,13 @@ class PaginaExtrair(PaginaBase):
         layout.insertWidget(idx + 3, self._botao)
         layout.insertWidget(idx + 4, self._botao_copiar)
         layout.insertWidget(idx + 5, self._resultado)
+        layout.insertWidget(idx + 6, self._botao_copiar_aviso)
 
-        self._conteudo_saida = None
         self._conteudo_saida = None
 
         self._botao_limpar = QPushButton("Limpar campos")
         self._botao_limpar.clicked.connect(self._limpar)
-        layout.insertWidget(idx + 6, self._botao_limpar)
+        layout.insertWidget(idx + 7, self._botao_limpar)
 
     def _colar_entrada(self):
         try:
@@ -135,10 +141,6 @@ class PaginaExtrair(PaginaBase):
         self._botao_copiar.setEnabled(True)
         achados = sum(1 for i in res.itens if i.encontrado)
         total = len(res.itens)
-        self._conteudo_saida = res.conteudo
-        self._botao_copiar.setEnabled(True)
-        achados = sum(1 for i in res.itens if i.encontrado)
-        total = len(res.itens)
         try:
             registrar_historico(
                 self._projeto.gitignore, "extrair", True,
@@ -149,7 +151,9 @@ class PaginaExtrair(PaginaBase):
         avisos = ("<br><span style='color:#d35400'>⚠️ " + "<br>".join(res.avisos) + "</span>") if res.avisos else ""
         self._resultado.setText(
             f"<span style='color:#27ae60'>✅ Extração concluída.</span><br>"
-            f"<b>{achados}/{total}</b> item(ns) confirmado(s) como localizado(s).<br>"
+            f"<b>{achados}/{total}</b> item(ns) confirmado(s) como localizado(s)."
+            f"<br><b>{res.total_linhas_extraidas}</b> linha(s) · "
+            f"~<b>{res.tokens_estimados}</b> token(s) estimado(s) irão para o clipboard.<br>"
             f"<small>Salvo em: {res.caminho_saida}</small>{instr}{avisos}")
 
     def _ao_falhar(self, msg):
@@ -173,6 +177,7 @@ class PaginaExtrair(PaginaBase):
             self._conteudo_saida = None
             self._botao_copiar.setEnabled(False)
             self._botao_copiar.setText("Copiar resultado")
+            self._botao_copiar_aviso.setText("📋 Copiar aviso")
             self._resultado.setText("")
             self._campo.clear()
 
@@ -182,6 +187,7 @@ class PaginaExtrair(PaginaBase):
         self._conteudo_saida = None
         self._botao_copiar.setEnabled(False)
         self._botao_copiar.setText("Copiar resultado")
+        self._botao_copiar_aviso.setText("📋 Copiar aviso")
 
     def _mostrar_exemplo(self):
         """Mostra um exemplo do JSON de extração aceito nesta página.

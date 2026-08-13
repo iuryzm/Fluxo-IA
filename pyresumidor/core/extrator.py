@@ -184,7 +184,7 @@ def executar_extracao(resposta_path_str: str, projeto_path_str: str, saida_path_
         requisicoes = _obter_texto_resposta(resposta_path_str, colar)
     except ErroEntrada as e:
         return ResultadoExtrair(sucesso=False, conteudo="", caminho_saida=None,
-                                itens=[], total_linhas_extraidas=0,
+                                itens=[], total_linhas_extraidas=0, tokens_estimados=0,
                                 instrucoes_anexadas=False, copiado=False, erros=[str(e)])
 
     md_saida = ["# Código Extraído para a IA\n\n"]
@@ -281,15 +281,18 @@ def executar_extracao(resposta_path_str: str, projeto_path_str: str, saida_path_
         avisos.append("A IA pediu 'sem_instrucoes': instruções do aplicador NÃO anexadas (economia de tokens).")
 
     conteudo = "\n".join(md_saida)
-    # NB: total_linhas_extraidas = tamanho do md gerado (linhas de código por nó
-    # ficam para quando o extrator reportar isso).
+    # total_linhas_extraidas = tamanho do md final (conteúdo + instruções, quando
+    # anexadas) — é exatamente o que vai para o clipboard. tokens_estimados é uma
+    # estimativa grosseira (len(conteudo) // 4), não uma contagem real de tokens.
     total_linhas = len(conteudo.splitlines())
+    tokens_estimados = len(conteudo) // 4
 
     try:
         Path(saida_path_str).write_text(conteudo, encoding="utf-8")
     except Exception as e:
         return ResultadoExtrair(sucesso=False, conteudo=conteudo, caminho_saida=None,
                                 itens=itens, total_linhas_extraidas=total_linhas,
+                                tokens_estimados=tokens_estimados,
                                 instrucoes_anexadas=instrucoes_anexadas, copiado=False,
                                 erros=[f"Erro ao salvar a saída: {e}"], avisos=avisos)
 
@@ -307,6 +310,7 @@ def executar_extracao(resposta_path_str: str, projeto_path_str: str, saida_path_
     return ResultadoExtrair(sucesso=True, conteudo=conteudo,
                             caminho_saida=str(Path(saida_path_str).resolve()),
                             itens=itens, total_linhas_extraidas=total_linhas,
+                            tokens_estimados=tokens_estimados,
                             instrucoes_anexadas=instrucoes_anexadas, copiado=copiado,
                             avisos=avisos)
 
@@ -389,10 +393,15 @@ def _parsear_fatia(fatia: str):
 def _span_alvo_no_arquivo(arvore, linhas_fonte: list, alvo: str):
     """Localiza o span (1-based inclusivo, contando decoradores) de um alvo por nome.
 
-    `alvo` pode ser "funcao", "Classe" ou "Classe.metodo". Reutiliza o mesmo critério
-    de início do _fonte_do_no (primeiro decorador, se houver). Devolve (ini, fim) ou
-    None se o alvo não for encontrado. Método só casa dentro da classe nomeada, para
-    não confundir homônimos (mesma regra do ExtratorAST).
+    `alvo` pode ser "funcao", "Classe", "Classe.metodo" ou uma CONSTANTE de nível de
+    módulo (Assign/AnnAssign simples, ex. "LIMITE"). Reutiliza o mesmo critério de
+    início do _fonte_do_no (primeiro decorador, se houver). Devolve (ini, fim) ou None
+    se o alvo não for encontrado. Método só casa dentro da classe nomeada, para não
+    confundir homônimos (mesma regra do ExtratorAST). Constante só é buscada quando
+    `alvo` não tem ponto e não bate com função/classe (checado primeiro, sem mudança
+    de comportamento): entre os Assign/AnnAssign de nível de módulo, casa o primeiro
+    cujo alvo seja um `Name` simples igual a `alvo`; alvo composto (`a, b = ...`) e
+    AnnAssign sem valor (só anotação, sem conteúdo para extrair) não casam.
     """
     funcdefs = (ast.FunctionDef, ast.AsyncFunctionDef)
 
@@ -413,6 +422,18 @@ def _span_alvo_no_arquivo(arvore, linhas_fonte: list, alvo: str):
     for no in arvore.body:
         if isinstance(no, (ast.ClassDef, *funcdefs)) and no.name == alvo:
             return _ini(no), no.end_lineno
+
+    for no in arvore.body:
+        if isinstance(no, ast.Assign):
+            if (len(no.targets) == 1
+                    and isinstance(no.targets[0], ast.Name)
+                    and no.targets[0].id == alvo):
+                return no.lineno, no.end_lineno
+        elif isinstance(no, ast.AnnAssign):
+            if (no.value is not None
+                    and isinstance(no.target, ast.Name)
+                    and no.target.id == alvo):
+                return no.lineno, no.end_lineno
     return None
 
 

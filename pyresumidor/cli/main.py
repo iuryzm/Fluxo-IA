@@ -114,6 +114,7 @@ def _exibir_extrair(res) -> int:
     print(f"✅ Extração concluída em: {res.caminho_saida}")
     achados = sum(1 for i in res.itens if i.encontrado)
     print(f"   {achados}/{len(res.itens)} item(ns) confirmado(s) como localizado(s).")
+    print(f"   {res.total_linhas_extraidas} linha(s) · ~{res.tokens_estimados} token(s) estimado(s).")
     if res.instrucoes_anexadas:
         print("   (instruções do aplicador anexadas)")
     if res.copiado:

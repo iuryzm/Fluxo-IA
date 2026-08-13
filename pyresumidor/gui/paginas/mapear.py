@@ -36,10 +36,15 @@ class PaginaMapear(PaginaBase):
         self._resultado = QLabel("")
         self._resultado.setWordWrap(True)
         self._resultado.setTextFormat(Qt.TextFormat.RichText)
+        self._resultado.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+
+        self._botao_copiar_aviso = QPushButton("📋 Copiar aviso")
+        self._botao_copiar_aviso.clicked.connect(self._copiar_aviso)
 
         layout.insertWidget(idx, self._botao)
         layout.insertWidget(idx + 1, self._botao_copiar)
         layout.insertWidget(idx + 2, self._resultado)
+        layout.insertWidget(idx + 3, self._botao_copiar_aviso)
 
         self._conteudo_mapa = None  # guarda res.conteudo para o botão copiar
 
@@ -112,4 +117,5 @@ class PaginaMapear(PaginaBase):
             self._conteudo_mapa = None
             self._botao_copiar.setEnabled(False)
             self._botao_copiar.setText("Copiar mapa")
+            self._botao_copiar_aviso.setText("📋 Copiar aviso")
             self._resultado.setText("")

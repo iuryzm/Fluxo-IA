@@ -125,3 +125,46 @@ def test_processar_trecho_fatia_malformada_erro_como_dado(tmp_path):
     assert encontrado is False
     assert aviso is not None
     assert "inválida" in aviso
+
+
+def test_processar_trecho_constante_de_modulo_encontrada(tmp_path):
+    """Alvo é uma CONSTANTE de módulo (Assign simples): span cobre a atribuição inteira."""
+    fonte = (
+        "import os\n"
+        "\n"
+        "LIMITE = 5\n"
+        "\n"
+        "def solta():\n"
+        "    return LIMITE\n"
+    )
+    alvo = tmp_path / "mod_constante.py"
+    alvo.write_text(fonte, encoding="utf-8")
+    md, encontrado, aviso = extrator.processar_trecho(alvo, "LIMITE", "primeiras:1")
+    assert encontrado is True
+    assert "LIMITE = 5" in md
+    assert "RECORTE PARCIAL" not in md      # 1 linha pedida == 1 linha do span: cobre tudo
+
+
+def test_processar_trecho_constante_ann_assign_sem_valor_nao_casa(tmp_path):
+    """AnnAssign sem valor (só anotação, ex. 'x: int') não tem conteúdo: não casa como alvo."""
+    fonte = (
+        "LIMITE: int\n"
+        "\n"
+        "def f():\n"
+        "    return 1\n"
+    )
+    alvo = tmp_path / "mod_anotacao.py"
+    alvo.write_text(fonte, encoding="utf-8")
+    md, encontrado, aviso = extrator.processar_trecho(alvo, "LIMITE", "primeiras:1")
+    assert encontrado is False
+    assert aviso is not None
+    assert "não encontrado" in aviso
+
+
+def test_processar_trecho_constante_simples_inexistente_nao_encontrada(tmp_path):
+    """Nome que não é função, classe nem constante de módulo: erro-como-dado, sem exceção."""
+    alvo = _escreve(tmp_path)
+    md, encontrado, aviso = extrator.processar_trecho(alvo, "NAO_EXISTE", "primeiras:1")
+    assert encontrado is False
+    assert aviso is not None
+    assert "não encontrado" in aviso

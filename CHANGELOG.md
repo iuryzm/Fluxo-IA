@@ -40,14 +40,26 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
   principal de gravados está correta; o breakdown é caso de borda).
 
 ## [WorkingAt]
-- No itens.
+- No itens
 
 ### [Guidelines]
 - Docstrings are important.
 - 1º monte um plano de trabalho. Depois iremos executar.
 
 ## [Unreleased]
-- No itens.
+- No itens
+
+## [1.7.0] - 2026.08.13
+- `extrator.py`: `"trechos"` com `alvo` agora também localiza CONSTANTES de nível
+  de módulo (Assign/AnnAssign simples), não só função/classe. Uso continua
+  restrito a leitura — para editar uma constante, `"arquivos_completos"`.
+- Extrair (`core` + GUI + CLI): `ResultadoExtrair` agora carrega
+  `tokens_estimados` (estimativa grosseira, len(conteudo)//4 — não é contagem
+  real de tokens) ao lado de `total_linhas_extraidas`. Exibido no resultado da
+  GUI e na saída da CLI.
+- GUI: avisos/status em Extrair, Aplicar e Mapear ganharam botão "📋 Copiar
+  aviso" (via novo helper `PaginaBase._copiar_aviso`/`_texto_plano_de_label`),
+  copiando o texto em texto plano (sem marcação HTML).
 
 ## [1.6.1] - 2026.07.03
 ### Added

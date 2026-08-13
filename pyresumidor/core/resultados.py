@@ -52,6 +52,7 @@ class ResultadoExtrair:
     caminho_saida: str | None
     itens: list[ItemExtraido]
     total_linhas_extraidas: int
+    tokens_estimados: int        # estimativa grosseira (len(conteudo) // 4); NÃO é contagem exata
     instrucoes_anexadas: bool
     copiado: bool
     erros: list[str] = field(default_factory=list)

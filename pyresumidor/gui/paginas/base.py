@@ -16,6 +16,9 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import (
     QFont,
 )
+from pyresumidor.core import (
+    clipboard,
+)
 
 
 class PaginaBase(QWidget):
@@ -79,3 +82,30 @@ class PaginaBase(QWidget):
         lay.addWidget(fechar)
 
         dlg.exec()
+
+    def _texto_plano_de_label(self, label: QLabel) -> str:
+        """Converte o RichText (HTML simples: span/b/small/br) de um QLabel de aviso
+        em texto plano, preservando quebras de linha e descartando tags/cores. Usado
+        pelo botão 'Copiar aviso' — o usuário recebe o texto puro, sem marcação.
+        """
+        import re
+        bruto = label.text()
+        bruto = re.sub(r'(?i)<br\s*/?>', '\n', bruto)
+        bruto = re.sub(r'<[^>]+>', '', bruto)
+        return bruto.strip()
+
+    def _copiar_aviso(self):
+        """Copia o texto atual de `self._resultado` (avisos/status) para a área de
+        transferência, em texto plano. Slot comum: páginas concretas que têm um QLabel
+        `_resultado` e um botão `_botao_copiar_aviso` ligam o clique deste botão aqui.
+        """
+        texto = self._texto_plano_de_label(self._resultado)
+        if not texto:
+            return
+        try:
+            clipboard.copiar(texto)
+            self._botao_copiar_aviso.setText("Copiado ✓")
+        except Exception as e:
+            self._resultado.setText(
+                self._resultado.text() +
+                f"<br><span style='color:#c0392b'>❌ Não consegui copiar: {e}</span>")
