@@ -83,3 +83,21 @@ def test_recente_filtra_gitignore_inexistente(dados_tmp, tmp_path):
     arz.registrar_recente(str(g), "Some")
     g.unlink()  # arquivo some (faxina da VM)
     assert arz.listar_recentes() == []  # não oferece projeto que sumiu
+
+
+def test_gravar_debug_aplicar_grava_e_sobrescreve(dados_tmp, gitignore):
+    """gravar_debug_aplicar grava o relatório em debug_aplicar.json e sobrescreve
+    numa segunda chamada (reflete só a última rodada)."""
+    from pyresumidor.core import armazenamento
+
+    caminho1 = armazenamento.gravar_debug_aplicar(
+        gitignore, [{"caminho": "a.py", "diagnosticos": [{"alvo": "a.py", "candidatos": []}]}])
+    assert caminho1.exists()
+    assert caminho1 == armazenamento.caminho_debug_aplicar(gitignore)
+
+    caminho2 = armazenamento.gravar_debug_aplicar(gitignore, [{"caminho": "b.py", "diagnosticos": []}])
+    assert caminho2 == caminho1
+
+    import json
+    dados = json.loads(caminho2.read_text(encoding="utf-8"))
+    assert dados["arquivos"][0]["caminho"] == "b.py"

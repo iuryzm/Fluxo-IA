@@ -189,3 +189,26 @@ def listar_historico(gitignore_path: str) -> list:
         return []
     hist = proj.get("historico")
     return hist if isinstance(hist, list) else []
+
+
+def caminho_debug_aplicar(gitignore_path: str) -> Path:
+    """Onde o Aplicar grava o relatório de diagnóstico de âncoras não encontradas
+    (sobrescrito a cada tentativa — reflete só a última rodada, como
+    entrada_aplicar.md)."""
+    return dir_projeto(gitignore_path) / "debug_aplicar.json"
+
+
+def gravar_debug_aplicar(gitignore_path: str, arquivos_com_diagnostico: list) -> Path:
+    """Grava o relatório de diagnóstico de âncoras não encontradas em debug_aplicar.json
+    (sobrescreve a cada Aplicar).
+
+    `arquivos_com_diagnostico` é uma lista de dicts {"caminho": rel, "diagnosticos": [...]}
+    — só os arquivos de ResultadoAplicar.arquivos que tiveram diagnóstico (ver
+    ResultadoArquivoAplicado.diagnosticos), não a lista inteira do plano. Cada item de
+    "diagnosticos" vem de _aplicar_trecho_no_texto via _candidatos_ancora: {"alvo": str,
+    "candidatos": [{"linha": int, "texto": str, "score": float}, ...]}.
+    """
+    caminho = caminho_debug_aplicar(gitignore_path)
+    dados = {"gerado_em": time.strftime("%Y-%m-%dT%H:%M:%S"), "arquivos": arquivos_com_diagnostico}
+    _gravar_json(caminho, dados)
+    return caminho

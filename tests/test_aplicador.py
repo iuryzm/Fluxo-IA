@@ -23,7 +23,7 @@ def test_substituir_funcao_simples(projeto):
     ops = [{"acao": "substituir", "arquivo": "exemplo.py", "tipo": "funcao",
             "alvo": "funcao_solta", "codigo_id": "b1"}]
     blocos = {"b1": "def funcao_solta(x):\n    return x * 99\n"}
-    original, novo, erros = aplicador.aplicar_em_arquivo("exemplo.py", alvo, ops, blocos)
+    original, novo, erros, _diagnosticos = aplicador.aplicar_em_arquivo("exemplo.py", alvo, ops, blocos)
     assert not erros
     assert "x * 99" in novo
     assert "x + 1" not in novo
@@ -35,7 +35,7 @@ def test_guarda_corpo_recusa_sintaxe_invalida(projeto):
     ops = [{"acao": "substituir", "arquivo": "exemplo.py", "tipo": "funcao",
             "alvo": "funcao_solta", "codigo_id": "b1"}]
     blocos = {"b1": "def funcao_solta(x:\n    return"}  # sintaxe invalida
-    original, novo, erros = aplicador.aplicar_em_arquivo("exemplo.py", alvo, ops, blocos)
+    original, novo, erros, _diagnosticos = aplicador.aplicar_em_arquivo("exemplo.py", alvo, ops, blocos)
     # nada aplicado: novo == original e erro reportado
     assert novo == original
     assert erros
@@ -232,3 +232,22 @@ def test_guarda_sem_gitignore_so_avisa(tmp_path):
     erros, avisos = _validar_acoes_arquivo(ops, tmp_path)
     assert erros == []
     assert len(avisos) == 1 and "não aplicada" in avisos[0]
+
+
+def test_trecho_arquivo_ancora_nao_encontrada_gera_diagnostico(projeto):
+    """Âncora que não bate, em tipo 'arquivo' (config não-Python): erros descreve
+    o motivo e diagnosticos traz os candidatos estruturados (mesmos dados que
+    alimentam _linhas_proximas), pra consumo por um relatório de depuração.
+    """
+    alvo = projeto / "config.yaml"
+    blocos = {"a1": "chave_que_nao_existe: 123", "b1": "nova: linha"}
+    ops = [{"acao": "trecho", "tipo": "arquivo", "posicao": "depois",
+            "ancora_id": "a1", "codigo_id": "b1"}]
+    original, novo, erros, diagnosticos = aplicador._aplicar_ops_em_texto(
+        "config.yaml", alvo.read_text(encoding="utf-8"), alvo, ops, blocos)
+    assert novo == original
+    assert len(erros) == 1
+    assert "não encontrada" in erros[0]
+    assert len(diagnosticos) == 1
+    assert diagnosticos[0]["alvo"] == "config.yaml"
+    assert diagnosticos[0]["candidatos"]  # pelo menos um candidato (a única linha do arquivo)

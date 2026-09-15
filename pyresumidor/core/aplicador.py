@@ -302,7 +302,7 @@ def _aplicar_trecho_no_texto(fonte: str, no, ancora: str, codigo: str, posicao: 
 
     `no` é o nó AST que delimita a janela de busca; se `no` for None, a janela é o
     arquivo inteiro (caso de configs não-Python). A âncora precisa casar exatamente
-    uma vez dentro da janela. Retorna (nova_fonte, erro_ou_None).
+    uma vez dentro da janela. Retorna (nova_fonte, erro_ou_None, candidatos).
 
     Casamento em duas etapas: primeiro o exato (linha a linha, via _normalizar_bloco);
     se ele não achar nada, um fallback tolerante a quebras de linha (rec 2) colapsa
@@ -310,8 +310,12 @@ def _aplicar_trecho_no_texto(fonte: str, no, ancora: str, codigo: str, posicao: 
     uma âncora reflada (mesmos tokens, quebras diferentes) case um construto
     equivalente quebrado em várias linhas no disco (ex.: import parentético). O
     fallback exige casamento único e prefere a menor janela por início, para não ser
-    guloso. Quando nada casa, o erro traz as linhas do escopo mais próximas da âncora
-    (rec 4), revelando como o disco difere do texto ancorado.
+    guloso. Quando nada casa, o erro traz as linhas do escopo mais parecidas com a
+    âncora (rec 4, via _linhas_proximas) e `candidatos` traz os MESMOS dados de forma
+    estruturada (via _candidatos_ancora), para quem quiser montar um relatório de
+    depuração em vez de só ler a mensagem. Em qualquer outro caso de erro (âncora
+    ambígua, vazia, ou posição inválida), `candidatos` vem [] — só o caso "não
+    encontrada" tem diagnóstico.
 
     Indentação (WYSIWYG): o código novo entra com a indentação que a IA escreveu,
     corrigida apenas pelo `delta` entre a coluna que ela deu à âncora e a coluna real
@@ -341,7 +345,7 @@ def _aplicar_trecho_no_texto(fonte: str, no, ancora: str, codigo: str, posicao: 
     while anc and not anc[-1].strip():
         anc.pop()
     if not anc:
-        return fonte, "âncora vazia após normalização."
+        return fonte, "âncora vazia após normalização.", []
 
     anc_norm = _normalizar_bloco(anc)
     n = len(anc_norm)
@@ -354,7 +358,7 @@ def _aplicar_trecho_no_texto(fonte: str, no, ancora: str, codigo: str, posicao: 
 
     if len(matches) > 1:
         return fonte, (f"âncora ambígua: {len(matches)} ocorrências no escopo do alvo; "
-                       "torne a âncora mais específica.")
+                       "torne a âncora mais específica."), []
 
     if len(matches) == 1:
         m, consumo = matches[0], n
@@ -374,11 +378,12 @@ def _aplicar_trecho_no_texto(fonte: str, no, ancora: str, codigo: str, posicao: 
                     break
         inicios = sorted(por_inicio)
         if len(inicios) == 0:
+            candidatos = _candidatos_ancora(linhas, win_ini, win_fim, ancora)
             return fonte, ("âncora não encontrada dentro do escopo do alvo."
-                           + _linhas_proximas(linhas, win_ini, win_fim, ancora))
+                           + _linhas_proximas(candidatos, _colapsar_ws(ancora))), candidatos
         if len(inicios) > 1:
             return fonte, (f"âncora ambígua: {len(inicios)} ocorrências (casamento tolerante) "
-                           "no escopo do alvo; torne a âncora mais específica.")
+                           "no escopo do alvo; torne a âncora mais específica."), []
         m = inicios[0]
         consumo = por_inicio[m]
 
@@ -401,9 +406,9 @@ def _aplicar_trecho_no_texto(fonte: str, no, ancora: str, codigo: str, posicao: 
     elif posicao == "depois":
         novas = linhas[:m + consumo] + novo_codigo + linhas[m + consumo:]
     else:
-        return fonte, f"posição inválida: '{posicao}' (use 'substituir', 'antes' ou 'depois')."
+        return fonte, f"posição inválida: '{posicao}' (use 'substituir', 'antes' ou 'depois').", []
 
-    return "\n".join(novas), None
+    return "\n".join(novas), None, []
 
 
 def _substituir_no_texto(fonte: str, no, codigo_novo: str) -> str:
@@ -618,9 +623,10 @@ def aplicar_em_arquivo(rel: str, alvo: Path, ops: list, blocos: dict) -> tuple:
     """Aplica (em memória) todas as operações de um arquivo.
 
     Lê o texto atual do disco (ou "" se o arquivo não existe) e delega o trabalho de
-    aplicação a _aplicar_ops_em_texto (núcleo puro). Wrapper fino: assinatura e retorno
-    (texto_original, texto_novo, lista_de_erros) inalterados — o caminho legado do
-    executar não percebe diferença.
+    aplicação a _aplicar_ops_em_texto (núcleo puro). Wrapper fino: só repassa o
+    retorno de _aplicar_ops_em_texto — (texto_original, texto_novo, lista_de_erros,
+    diagnosticos) — sem alterar sua forma. O caminho legado do executar foi atualizado
+    nesta leva para desempacotar os 4 valores.
     """
     original = alvo.read_text(encoding="utf-8", errors="replace") if alvo.exists() else ""
     return _aplicar_ops_em_texto(rel, original, alvo, ops, blocos)
@@ -722,7 +728,7 @@ def executar(resposta_path_str: str, projeto_path_str: str,
 
     for rel, ops in por_arquivo.items():
         alvo = projeto_path / rel
-        original, novo, erros = aplicar_em_arquivo(rel, alvo, ops, blocos)
+        original, novo, erros, diagnosticos = aplicar_em_arquivo(rel, alvo, ops, blocos)
         diff = _gerar_diff(rel, original, novo)
         add = dels = 0
         gravado = False
@@ -744,7 +750,8 @@ def executar(resposta_path_str: str, projeto_path_str: str,
         total_del += dels
         arquivos_result.append(ResultadoArquivoAplicado(
             caminho=rel, adicionadas=add, removidas=dels, diff=diff,
-            gravado=gravado, backup_criado=backup_criado, erros=erros))
+            gravado=gravado, backup_criado=backup_criado, erros=erros,
+            diagnosticos=diagnosticos))
 
     caminho_patch = None
     if diff_path_str and todos_diffs:
@@ -859,29 +866,17 @@ def _colapsar_ws(texto: str) -> str:
     return " ".join(texto.split())
 
 
-def _linhas_proximas(linhas: list, win_ini: int, win_fim: int, ancora: str, n: int = 3) -> str:
-    """Diagnóstico de âncora que não casou (rec 4).
-
-    Devolve as `n` linhas do escopo mais parecidas com a âncora (por similaridade),
-    cada uma com seu número de linha 1-based no arquivo, para revelar como o disco
-    difere do texto que a IA ancorou — o caso típico é um import que no disco está
-    parentético/multilinha e na âncora veio em linha única. Retorna '' se o escopo
-    não tiver linhas com conteúdo.
+def _linhas_proximas(candidatos: list, ancora_colapsada: str) -> str:
+    """Formata os candidatos (de _candidatos_ancora) como texto para o erro de
+    âncora não encontrada (rec 4): mostra a própria âncora buscada (colapsada) e
+    as linhas do escopo mais parecidas com ela, para revelar como o disco difere
+    do texto ancorado. '' se não houver candidatos (escopo sem linhas com conteúdo).
     """
-    import difflib  # uso pontual, só neste caminho de erro
-    alvo = _colapsar_ws(ancora)
-    pontuadas = []
-    for i in range(win_ini, win_fim):
-        if not linhas[i].strip():
-            continue
-        escore = difflib.SequenceMatcher(None, alvo, _colapsar_ws(linhas[i])).ratio()
-        pontuadas.append((escore, i))
-    if not pontuadas:
+    if not candidatos:
         return ""
-    pontuadas.sort(key=lambda t: t[0], reverse=True)
-    melhores = sorted(idx for _, idx in pontuadas[:n])  # reordena por posição no arquivo
-    corpo = "\n".join(f"    L{i + 1}: {linhas[i]}" for i in melhores)
-    return "\n  linhas mais próximas no escopo:\n" + corpo
+    corpo = "\n".join(f"    L{c['linha']}: {c['texto']}" for c in candidatos)
+    return (f"\n  âncora buscada (colapsada): {ancora_colapsada}"
+            "\n  linhas mais parecidas no escopo (por similaridade):\n" + corpo)
 
 
 def _formatar_import_from(modulo: str, nomes: list) -> str:
@@ -970,9 +965,13 @@ def _aplicar_ops_em_texto(rel: str, original: str, alvo: Path, ops: list, blocos
     em vez de lê-lo do disco, para que o interpretador de sequência (modo C) possa
     encadear várias edições ao mesmo arquivo em memória (a 2ª parte do que a 1ª
     produziu). `alvo` é usado só para metadados do caminho (`alvo.suffix`), nunca para
-    reler conteúdo. Retorna (original, novo, erros) — mesma tupla de aplicar_em_arquivo.
+    reler conteúdo. Retorna (original, novo, erros, diagnosticos) — mesma tupla de
+    aplicar_em_arquivo. `diagnosticos` é uma lista de {"alvo": str, "candidatos": [...]},
+    um item por 'trecho' cuja âncora não foi encontrada (ver _aplicar_trecho_no_texto /
+    _candidatos_ancora); consumida pela CLI/GUI para gravar um relatório de depuração.
     """
     erros = []
+    diagnosticos = []
     novo = original
 
     for op in ops:
@@ -1021,15 +1020,17 @@ def _aplicar_ops_em_texto(rel: str, original: str, alvo: Path, ops: list, blocos
                     erros.append(f"[{rel}] não consegui parsear o estado atual do arquivo: {e} "
                                  "(ações por nó exigem Python válido — corrija a sintaxe e rode de novo, "
                                  "ou use \"acao\": \"arquivo\").")
-                    return original, original, erros
+                    return original, original, erros, diagnosticos
                 no = _encontrar_no(arvore, tipo, alvo_nome)
                 if no is None:
                     erros.append(f"[{rel}] {tipo} '{alvo_nome}' não encontrado para ancorar o trecho.")
                     continue
 
-            resultado, erro = _aplicar_trecho_no_texto(novo, no, ancora, codigo or "", posicao)
+            resultado, erro, candidatos = _aplicar_trecho_no_texto(novo, no, ancora, codigo or "", posicao)
             if erro:
                 erros.append(f"[{rel}] {tipo} '{alvo_nome or rel}': {erro}")
+                if candidatos:
+                    diagnosticos.append({"alvo": alvo_nome or rel, "candidatos": candidatos})
                 continue
             novo = resultado
             continue
@@ -1059,7 +1060,7 @@ def _aplicar_ops_em_texto(rel: str, original: str, alvo: Path, ops: list, blocos
             arvore = ast.parse(novo)
         except SyntaxError as e:
             erros.append(f"[{rel}] não consegui parsear o estado atual do arquivo: {e}")
-            return original, original, erros
+            return original, original, erros, diagnosticos
 
         tipo = op.get("tipo")
         alvo_nome = op.get("alvo", "")
@@ -1106,9 +1107,9 @@ def _aplicar_ops_em_texto(rel: str, original: str, alvo: Path, ops: list, blocos
             ast.parse(novo)
         except SyntaxError as e:
             erros.append(f"[{rel}] resultado final ficou com sintaxe inválida; arquivo NÃO será alterado: {e}")
-            return original, original, erros
+            return original, original, erros, diagnosticos
 
-    return original, novo, erros
+    return original, novo, erros, diagnosticos
 
 
 def _validar_comando(op: dict):
@@ -1195,7 +1196,7 @@ def _montar_passos(operacoes: list, blocos: dict, projeto_path: Path):
             ordem_arquivos.append(rel)
 
         antes = estados[rel]
-        _orig, depois, erros_op = _aplicar_ops_em_texto(rel, antes, alvo, [op], blocos)
+        _orig, depois, erros_op, _diag_op = _aplicar_ops_em_texto(rel, antes, alvo, [op], blocos)
         estados[rel] = depois
         erros_por_arquivo[rel].extend(erros_op)
         passos.append(PassoPlano(tipo="edicao", ordem=i, caminho=rel))
@@ -1291,3 +1292,29 @@ def _validar_acoes_arquivo(operacoes, projeto_path):
             avisos.append(f"[passo {i}] '{rel}' é um arquivo novo fora do allowlist: "
                           "não aparecerá nos próximos mapas até entrar no .gitignore.")
     return erros, avisos
+
+
+def _candidatos_ancora(linhas: list, win_ini: int, win_fim: int, ancora: str, n: int = 3) -> list:
+    """Calcula os `n` candidatos mais parecidos (difflib) com `ancora` dentro do
+    escopo [win_ini, win_fim). Fonte única de dados por trás do diagnóstico de
+    âncora não encontrada: alimenta tanto _linhas_proximas (mensagem de erro em
+    texto) quanto o relatório de depuração estruturado que sobe até
+    ResultadoArquivoAplicado.diagnosticos.
+
+    Cada candidato é {"linha": 1-based, "texto": str, "score": float}, ordenados
+    por POSIÇÃO no arquivo (não por score) — quem exibe decide se reordena.
+    [] se o escopo não tiver linhas com conteúdo.
+    """
+    import difflib  # uso pontual, só no caminho de erro
+    alvo = _colapsar_ws(ancora)
+    pontuadas = []
+    for i in range(win_ini, win_fim):
+        if not linhas[i].strip():
+            continue
+        escore = difflib.SequenceMatcher(None, alvo, _colapsar_ws(linhas[i])).ratio()
+        pontuadas.append((escore, i))
+    if not pontuadas:
+        return []
+    pontuadas.sort(key=lambda t: t[0], reverse=True)
+    melhores = sorted(pontuadas[:n], key=lambda t: t[1])  # reordena por posição
+    return [{"linha": i + 1, "texto": linhas[i], "score": round(escore, 3)} for escore, i in melhores]

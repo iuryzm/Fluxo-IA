@@ -125,6 +125,12 @@ class ResultadoArquivoAplicado:
     gravado: bool
     backup_criado: bool
     erros: list[str] = field(default_factory=list)
+    diagnosticos: list[dict] = field(default_factory=list)
+    # cada item: {"alvo": str, "candidatos": [{"linha": int, "texto": str, "score": float}, ...]}
+    # só preenchido por 'trecho' com âncora não encontrada (ver _aplicar_trecho_no_texto /
+    # _candidatos_ancora em aplicador.py); consumido pela CLI/GUI para gravar o relatório de
+    # depuração via armazenamento.gravar_debug_aplicar. Vazio no modo sequenciado (modo C) por
+    # enquanto — _montar_passos ainda não foi atualizado para preencher este campo.
 
 
 @dataclass

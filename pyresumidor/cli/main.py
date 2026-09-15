@@ -15,6 +15,7 @@ from pyresumidor.core import (
     extrator,
     aplicador,
     executor_sequencia,
+    armazenamento,
 )
 from pyresumidor.core.aplicador import _gerar_html_diff
 
@@ -168,6 +169,18 @@ def _exibir_aplicar(res, projeto_path, html_diff) -> int:
             print(f"   \033[31m- {e}\033[0m")
     for a in res.avisos:
         print(f"\033[33m⚠️ {a}\033[0m")
+
+    # Âncoras não encontradas: grava relatório estruturado pra depuração (rec 4b).
+    # Roda em dry-run e em aplicar de verdade — o diagnóstico não depende de gravar.
+    arquivos_com_diagnostico = [{"caminho": arq.caminho, "diagnosticos": arq.diagnosticos}
+                                for arq in res.arquivos if arq.diagnosticos]
+    if arquivos_com_diagnostico:
+        try:
+            caminho_debug = armazenamento.gravar_debug_aplicar(
+                str(Path(projeto_path) / ".gitignore"), arquivos_com_diagnostico)
+            print(f"\n🔍 Diagnóstico de âncora(s) não encontrada(s) salvo em: {caminho_debug}")
+        except Exception as e:
+            print(f"\033[33m⚠️ Não consegui salvar o relatório de diagnóstico: {e}\033[0m")
 
     if html_diff is not None:
         diffs_arquivos = [(a.caminho, a.diff) for a in res.arquivos if a.diff]

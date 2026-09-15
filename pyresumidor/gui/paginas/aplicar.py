@@ -19,7 +19,10 @@ from pyresumidor.core import (
     executor_sequencia,
 )
 from pyresumidor.core import clipboard
-from pyresumidor.core.armazenamento import caminho_entrada_aplicar
+from pyresumidor.core.armazenamento import (
+    caminho_entrada_aplicar,
+    gravar_debug_aplicar,
+)
 from pyresumidor.core.armazenamento import caminho_entrada_aplicar, registrar_historico
 
 
@@ -273,6 +276,18 @@ class PaginaAplicar(PaginaBase):
         bloco_erros = ("<br><span style='color:#c0392b'>⚠️ Erros por arquivo:<br>" +
                        "<br>".join(erros_arq) + "</span>") if erros_arq else ""
 
+        # Âncoras não encontradas: grava relatório estruturado pra depuração (rec 4b).
+        # Roda em dry-run e em aplicar de verdade — o diagnóstico não depende de gravar.
+        bloco_debug = ""
+        arquivos_com_diagnostico = [{"caminho": a.caminho, "diagnosticos": a.diagnosticos}
+                                    for a in res.arquivos if a.diagnosticos]
+        if arquivos_com_diagnostico:
+            try:
+                caminho_debug = gravar_debug_aplicar(self._projeto.gitignore, arquivos_com_diagnostico)
+                bloco_debug = f"<br><small>🔍 Diagnóstico de âncora(s) não encontrada(s) salvo em: {caminho_debug}</small>"
+            except Exception:
+                pass
+
         if aplicado:
             gravados = [a for a in res.arquivos if a.gravado]
             backups = [a.caminho for a in gravados if a.backup_criado]
@@ -281,7 +296,7 @@ class PaginaAplicar(PaginaBase):
                 f"<span style='color:#1e7e34'>✅ Aplicado.</span> "
                 f"{len(gravados)} arquivo(s) gravado(s) · "
                 f"<span style='color:#1e7e34'>+{res.total_adicionadas}</span> / "
-                f"<span style='color:#c0392b'>−{res.total_removidas}</span>{bk}{bloco_erros}{avisos}")
+                f"<span style='color:#c0392b'>−{res.total_removidas}</span>{bk}{bloco_erros}{bloco_debug}{avisos}")
             self._botao_aplicar.setEnabled(False)
             self._texto_simulado = None
             try:
@@ -298,10 +313,10 @@ class PaginaAplicar(PaginaBase):
                     f"<span style='color:#2980b9'>👀 Simulação (nada gravado).</span> "
                     f"<span style='color:#1e7e34'>+{res.total_adicionadas}</span> / "
                     f"<span style='color:#c0392b'>−{res.total_removidas}</span>. "
-                    f"Revise o diff e clique <b>Aplicar de verdade</b>.{bloco_erros}{avisos}")
+                    f"Revise o diff e clique <b>Aplicar de verdade</b>.{bloco_erros}{bloco_debug}{avisos}")
             else:
                 self._resultado.setText(
-                    f"<span style='color:#d35400'>➖ Nenhuma mudança gerada pelo plano.</span>{bloco_erros}{avisos}")
+                    f"<span style='color:#d35400'>➖ Nenhuma mudança gerada pelo plano.</span>{bloco_erros}{bloco_debug}{avisos}")
 
     def _render_diff(self, arquivos):
         self._diff.clear()
