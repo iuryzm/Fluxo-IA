@@ -40,7 +40,66 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
   principal de gravados está correta; o breakdown é caso de borda).
 
 ## [WorkingAt]
-- No itens
+- Relato do usuário:
+"""
+- Localização do projeto em que estava trabalhando: "C:/Users/BH2A/Programas/Projetos/visualizador-pn/.gitignore"
+- Tentativa de Aplicar o seguinte:
+  - Plano (JSON)
+"
+{
+  "operacoes": [
+    {"acao": "trecho", "arquivo": "CHANGELOG.md", "tipo": "arquivo", "posicao": "substituir", "ancora_id": "a1", "codigo_id": "b0"},
+    {"acao": "trecho", "arquivo": "CHANGELOG.md", "tipo": "arquivo", "posicao": "antes", "ancora_id": "a2", "codigo_id": "b1"},
+    {"acao": "trecho", "arquivo": "CHANGELOG.md", "tipo": "arquivo", "posicao": "antes", "ancora_id": "a3", "codigo_id": "b2"}
+  ]
+}
+"
+  - Código (blocos)
+"
+# --- id=a1 ---
+- Relato de bug:
+"""txt
+Erro na janela "Resumo - Acumulados por Combinação"
+Após clicar em "Calcular Resumo" e aguardado a tabela ser gerada cliquei em "Exportar.." e apareceu a janela "Erro ao exportar" com a seguinte mensagem "could not append value: 641791.732269 of type: f64 to the builder; make sure that all rows have same schema or consider increasing `infer_schema_length`
+
+it might also be that a value overflows the data-type's capacity"
+"""
+### [Guidelines]
+
+# --- id=b0 ---
+### [Guidelines]
+
+# --- id=a2 ---
+- `MainWindow.aplicar_mapeamento` limpava
+
+# --- id=b1 ---
+- `DialogResumo._exportar` construía o `.xlsx` a partir de `pl.DataFrame(lista_de_dicts)` sem schema explícito, deixando o Polars inferir o tipo de cada coluna pela amostra inicial de linhas. Como `ResumoModel._acumulado_final`/`_razoes` retornam `None` sempre que falta dado para uma combinação/grupo, era comum as primeiras linhas de uma coluna virem só `None`; se a amostra não continha nenhum float, o Polars inferia um tipo estreito e quebrava ao encontrar depois um valor float de verdade (ex.: `641791.732269`), com o erro "could not append value ... of type: f64 to the builder". Novo helper puro `montar_dados_exportacao_resumo` monta os dados coluna-a-coluna com schema explícito (`String` para filtros/Variável, `Float64` para grupos/razões), usado por `_exportar` via `pl.DataFrame(dados, schema=schema)`.
+
+# --- id=a3 ---
+- `tests/test_fluxos_substituir_filtro.py` (novo arquivo)
+
+# --- id=b2 ---
+- `tests/test_resumo_view_helpers.py` (novo arquivo): `montar_dados_exportacao_resumo` — colunas/schema corretos, valores convertidos (combo ausente vira "N/A", `None` preservado em grupo/razão), e a regressão do bug relatado (coluna com `None` seguido de float com casas decimais constrói sem erro; coluna inteiramente `None` mantém `Float64`; lista de linhas vazia) — 10 testes.
+"
+- Descrição: Ao clicar em "Simular (dry-run)" aparece o seguinte aviso:
+"
+👀 Simulação (nada gravado). +0 / −7. Revise o diff e clique Aplicar de verdade.
+⚠️ Erros por arquivo:
+CHANGELOG.md: [CHANGELOG.md] arquivo 'CHANGELOG.md': âncora não encontrada dentro do escopo do alvo.
+  linhas mais próximas no escopo:
+    L454:   na tela principal (todas marcadas por padrão; sem agrupamento selecionado, o
+    L758: - `MainWindow.aplicar_mapeamento()`: injeta os nomes das variáveis de contagem na lista do Eixo Y.
+    L1305: - Mudança do ícone do aplicativo.
+CHANGELOG.md: [CHANGELOG.md] arquivo 'CHANGELOG.md': âncora não encontrada dentro do escopo do alvo.
+  linhas mais próximas no escopo:
+    L376:   `tests/test_lancador_hpc.py`.
+    L390:   `tests/test_lancador_hpc.py`.
+    L560:   `tests/test_fluxos_operacao.py` (10 testes: operação sem/com filtro, os quatro
+"
+  - Ao verificar o arquivo CHANGELOG.md do projeto alvo me parece que não deveria ter os erros apontados.
+  - Gostaria que vc debugasse o problema através de arquivos de output gerados por scripts Python
+    - Tambem pode ser criado uma seção de Debug dentro do próprio programa se vc achar razoável para gerarmos relatórios mais detalhados de problemas no futuro
+"""
 
 ### [Guidelines]
 - Docstrings are important.
