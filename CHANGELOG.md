@@ -49,6 +49,20 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 ## [Unreleased]
 - No itens
 
+## [1.7.2] - 2026.10.23
+- Corrigido: a saída dos comandos do modo sequenciado (modo C) perdia os
+  acentos ("versão" aparecia como "versÃ£o"). O PowerShell recodificava a saída
+  de executáveis nativos (git, python…) na página de código do console, e o
+  runner decodificava pelo locale (cp1252). Agora o comando é prefixado com
+  `[Console]::OutputEncoding`/`$OutputEncoding` em UTF-8 sem BOM (dentro de
+  `try/catch`; o comando do usuário continua sendo a última instrução, então
+  exit code e gates não mudam) e a saída é decodificada como `utf-8-sig` com
+  `errors="replace"`. Novo helper puro `_comando_com_utf8`.
+- Testes: helper do prefixo, argv/decodificação do runner (subprocess simulado)
+  e duas fumaças reais com acentos (cmdlet e executável nativo), puladas sem
+  PowerShell.
+- `pyproject.toml`: versão alinhada ao CHANGELOG (estava em 1.5.0).
+
 ## [1.7.1] - 2026.09.15
 - Corrigido: mensagem de âncora não encontrada agora mostra a âncora buscada e
   rotula as linhas como "mais parecidas" (por similaridade), não "mais
