@@ -109,16 +109,22 @@ def _rodar_comando_powershell(comando: str, timeout: int, cwd: str, shell_exe: s
     (exit_code, stdout, stderr, expirou). NÃO usa check=True — exit != 0 é dado
     (o gate precisa vê-lo), não exceção. Timeout mata o processo e marca
     expirou=True. É esta função que os testes substituem por um runner fake.
+
+    Codificação: o comando é prefixado por `_comando_com_utf8` (PowerShell escreve
+    UTF-8 no pipe) e a saída é decodificada como UTF-8 (`utf-8-sig` descarta um BOM
+    inicial; bytes inválidos viram U+FFFD em vez de exceção). Antes, `text=True`
+    decodificava com o locale (cp1252) e os acentos chegavam como "Ã£".
     """
     try:
         proc = subprocess.run(
-            [shell_exe, "-NoProfile", "-Command", comando],
-            capture_output=True, text=True, timeout=timeout, cwd=cwd, env=env,
+            [shell_exe, "-NoProfile", "-Command", _comando_com_utf8(comando)],
+            capture_output=True, encoding="utf-8-sig", errors="replace",
+            timeout=timeout, cwd=cwd, env=env,
         )
-        return proc.returncode, proc.stdout, proc.stderr, False
+        return proc.returncode, proc.stdout or "", proc.stderr or "", False
     except subprocess.TimeoutExpired as e:
-        out = e.stdout if isinstance(e.stdout, str) else (e.stdout or b"").decode("utf-8", "replace")
-        err = e.stderr if isinstance(e.stderr, str) else (e.stderr or b"").decode("utf-8", "replace")
+        out = e.stdout if isinstance(e.stdout, str) else (e.stdout or b"").decode("utf-8-sig", "replace")
+        err = e.stderr if isinstance(e.stderr, str) else (e.stderr or b"").decode("utf-8-sig", "replace")
         return None, out or "", err or "", True
 
 
@@ -254,3 +260,24 @@ def executar_sequencia_empacotado(res, projeto_path, confirmador, timeout_padrao
         res.passos, projeto_path, confirmador, res.estados_finais,
         runner=runner, timeout_padrao=timeout_padrao, sem_backup=sem_backup)
     return ResultadoSequencia(res, parou_em)
+
+
+def _comando_com_utf8(comando: str) -> str:
+    """Prefixa `comando` com a configuração de saída UTF-8 do PowerShell.
+
+    Por que: o PowerShell lê a saída de executáveis nativos (git, python…) e a
+    reescreve no pipe usando `[Console]::OutputEncoding`, que no Windows costuma
+    ser a página de código OEM/ANSI. Um texto UTF-8 do git ("versão") chegava ao
+    PyResumidor como "versÃ£o". Com `[Console]::OutputEncoding` e
+    `$OutputEncoding` em UTF-8 (sem BOM), a saída de nativos e de cmdlets atravessa
+    o PowerShell íntegra, e o runner a decodifica como UTF-8.
+
+    A configuração fica em `try {} catch {}` (sem console disponível, a atribuição
+    pode falhar e não deve derrubar o comando). O comando do usuário continua sendo
+    a ÚLTIMA instrução, então exit code e gates não mudam.
+    """
+    return (
+        "try { $__pyr_utf8 = New-Object System.Text.UTF8Encoding $false; "
+        "[Console]::OutputEncoding = $__pyr_utf8; $OutputEncoding = $__pyr_utf8 } catch {}; "
+        + comando
+    )

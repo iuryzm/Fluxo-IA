@@ -240,3 +240,68 @@ def test_fumaca_powershell_real(tmp_path):
     assert rc.executado is True
     assert parou is None
     assert "ola" in rc.stdout
+
+
+def test_comando_com_utf8_preserva_o_comando_no_fim():
+    """O prefixo vem antes e o comando do usuário é a última instrução (exit/gates intactos)."""
+    resultado = ex._comando_com_utf8("git log -1")
+    assert resultado.endswith("; git log -1")
+    assert resultado.startswith("try {")
+    assert "[Console]::OutputEncoding" in resultado
+    assert "$OutputEncoding" in resultado
+
+
+def test_runner_real_usa_prefixo_e_decodifica_utf8(monkeypatch):
+    """Sem tocar o PowerShell: confere o argv e os parâmetros de decodificação."""
+    capturado = {}
+
+    class _Proc:
+        returncode = 0
+        stdout = "versão"
+        stderr = ""
+
+    def falso_run(args, **kwargs):
+        capturado["args"] = args
+        capturado["kwargs"] = kwargs
+        return _Proc()
+
+    monkeypatch.setattr(ex.subprocess, "run", falso_run)
+    exit_code, stdout, stderr, expirou = ex._rodar_comando_powershell(
+        "Write-Output x", 10, ".", "pwsh")
+    assert (exit_code, stdout, stderr, expirou) == (0, "versão", "", False)
+    assert capturado["args"][:3] == ["pwsh", "-NoProfile", "-Command"]
+    assert capturado["args"][3] == ex._comando_com_utf8("Write-Output x")
+    assert capturado["kwargs"]["encoding"] == "utf-8-sig"
+    assert capturado["kwargs"]["errors"] == "replace"
+    assert "text" not in capturado["kwargs"]
+
+
+@pytest.mark.skipif(
+    not (shutil.which("pwsh") or shutil.which("powershell")),
+    reason="PowerShell não instalado nesta máquina.")
+def test_fumaca_powershell_acentos(tmp_path):
+    """Cmdlet com acentos: a saída chega íntegra (sem 'Ã£')."""
+    passos = [_passo_comando("Write-Output 'versão ç'", ordem=0)]
+    passos, parou = ex.executar_sequencia(passos, tmp_path, _sempre_sim, {})
+    rc = passos[0].resultado_comando
+    assert parou is None
+    assert "versão ç" in rc.stdout
+
+
+@pytest.mark.skipif(
+    not (shutil.which("pwsh") or shutil.which("powershell")),
+    reason="PowerShell não instalado nesta máquina.")
+def test_fumaca_executavel_nativo_utf8(tmp_path):
+    """Executável nativo escrevendo bytes UTF-8 (o caso do git): acentos íntegros."""
+    import sys
+    script = tmp_path / "saida.py"
+    script.write_text(
+        'import sys\nsys.stdout.buffer.write("versão ç".encode("utf-8"))\n',
+        encoding="utf-8",
+    )
+    comando = f"& '{sys.executable}' '{script}'"
+    passos = [_passo_comando(comando, ordem=0)]
+    passos, parou = ex.executar_sequencia(passos, tmp_path, _sempre_sim, {})
+    rc = passos[0].resultado_comando
+    assert parou is None, rc.stderr
+    assert "versão ç" in rc.stdout
