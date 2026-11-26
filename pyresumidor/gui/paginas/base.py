@@ -10,6 +10,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QLabel,
     QDialog,
+    QDialogButtonBox,
+    QHBoxLayout,
+    QStyle,
     QTextEdit,
     QPushButton,
 )
@@ -82,6 +85,64 @@ class PaginaBase(QWidget):
         lay.addWidget(fechar)
 
         dlg.exec()
+
+    def _expandir(self, *widgets):
+        """Faz `widgets` (campos de texto, diffs, gráficos) crescerem com a janela.
+
+        O layout da página termina num addStretch(1) que, sozinho, absorveria todo o
+        espaço vertical extra — os campos parariam no tamanho sugerido. Aqui os
+        widgets recebem fator 1 e o espaçador final cai para 0: ele só ocupa espaço
+        quando nenhum widget expansível estiver visível (mantendo o topo alinhado).
+        """
+        lay = self.layout()
+        for w in widgets:
+            lay.setStretchFactor(w, 1)
+        lay.setStretch(lay.count() - 1, 0)
+
+    def _confirmar(self, titulo: str, texto: str) -> bool:
+        """Diálogo de confirmação Sim/Não para textos possivelmente longos.
+
+        Substitui QMessageBox nas confirmações cujo conteúdo cresce com o plano
+        (lista de arquivos/comandos): o QMessageBox cresce junto com o texto e pode
+        empurrar os botões para fora da tela. Aqui o texto fica numa área rolável e o
+        diálogo é limitado à área disponível da tela, então Sim/Não ficam sempre
+        visíveis. 'Não' é o padrão (Enter/Esc não autorizam nada).
+        """
+        dlg = QDialog(self)
+        dlg.setWindowTitle(titulo)
+        lay = QVBoxLayout(dlg)
+
+        topo = QHBoxLayout()
+        icone = QLabel()
+        icone.setPixmap(self.style().standardIcon(
+            QStyle.StandardPixmap.SP_MessageBoxWarning).pixmap(32, 32))
+        topo.addWidget(icone, 0)
+
+        visor = QTextEdit()
+        visor.setReadOnly(True)
+        visor.setPlainText(texto)
+        topo.addWidget(visor, 1)
+        lay.addLayout(topo, 1)
+
+        botoes = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Yes | QDialogButtonBox.StandardButton.No)
+        botoes.accepted.connect(dlg.accept)
+        botoes.rejected.connect(dlg.reject)
+        nao = botoes.button(QDialogButtonBox.StandardButton.No)
+        nao.setDefault(True)
+        nao.setFocus()
+        lay.addWidget(botoes)
+
+        # Tamanho: cabe o texto quando possível, mas nunca passa de ~80% da tela.
+        tela = (self.screen() or dlg.screen()).availableGeometry()
+        doc = visor.document()
+        doc.setTextWidth(560)
+        alt_texto = int(doc.size().height()) + 40
+        largura = min(640, int(tela.width() * 0.8))
+        altura = min(max(alt_texto + 80, 200), int(tela.height() * 0.8))
+        dlg.resize(largura, altura)
+
+        return dlg.exec() == QDialog.DialogCode.Accepted
 
     def _texto_plano_de_label(self, label: QLabel) -> str:
         """Converte o RichText (HTML simples: span/b/small/br) de um QLabel de aviso

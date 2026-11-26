@@ -85,6 +85,7 @@ class PaginaExtrair(PaginaBase):
         self._botao_limpar = QPushButton("Limpar campos")
         self._botao_limpar.clicked.connect(self._limpar)
         layout.insertWidget(idx + 7, self._botao_limpar)
+        self._expandir(self._campo)
 
     def _colar_entrada(self):
         try:

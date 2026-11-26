@@ -59,6 +59,7 @@ class PaginaEstatisticas(PaginaBase):
             self._chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
             self._chart_view.setMinimumHeight(260)
             layout.insertWidget(idx + 3, self._chart_view)
+            self._expandir(self._chart_view)
             self._grafico_msg = QLabel("")
             self._grafico_msg.setWordWrap(True)
             layout.insertWidget(idx + 4, self._grafico_msg)

@@ -9,7 +9,7 @@ são criados por padrão. O diff aparece inline, colorido.
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QColor, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
-    QPushButton, QLabel, QTextEdit, QHBoxLayout, QMessageBox,
+    QPushButton, QLabel, QTextEdit, QHBoxLayout,
 )
 
 from pyresumidor.gui.paginas.base import PaginaBase
@@ -124,6 +124,7 @@ class PaginaAplicar(PaginaBase):
         self._botao_limpar = QPushButton("Limpar campos")
         self._botao_limpar.clicked.connect(self._limpar)
         layout.insertWidget(idx + 12, self._botao_limpar)
+        self._expandir(self._campo_plano, self._campo_codigo, self._diff, self._saida_cmd)
 
     def _montar_texto(self):
         plano = self._campo_plano.toPlainText().strip()
@@ -225,14 +226,10 @@ class PaginaAplicar(PaginaBase):
             self._resultado.setText("<span style='color:#d35400'>⚠️ Nada para aplicar.</span>")
             return
         lista = "\n".join(f"  • {c}" for c in alterados)
-        cx = QMessageBox(self)
-        cx.setWindowTitle("Confirmar aplicação")
-        cx.setIcon(QMessageBox.Icon.Warning)
-        cx.setText(f"Gravar alterações em {len(alterados)} arquivo(s)?\n\n{lista}\n\n"
-                   "Backups .bak serão criados para os arquivos existentes.")
-        cx.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        cx.setDefaultButton(QMessageBox.StandardButton.No)
-        if cx.exec() != QMessageBox.StandardButton.Yes:
+        if not self._confirmar(
+                "Confirmar aplicação",
+                f"Gravar alterações em {len(alterados)} arquivo(s)?\n\n{lista}\n\n"
+                "Backups .bak serão criados para os arquivos existentes."):
             return
         entrada = caminho_entrada_aplicar(self._projeto.gitignore)
         entrada.write_text(self._texto_simulado, encoding="utf-8")
@@ -442,19 +439,15 @@ class PaginaAplicar(PaginaBase):
             linhas.append(f"  [{i}] {pc.comando}{desc}")
         corpo = "\n".join(linhas)
 
-        cx = QMessageBox(self)
-        cx.setWindowTitle("Autorizar execução de comandos")
-        cx.setIcon(QMessageBox.Icon.Warning)
-        cx.setText(
+        autorizado = self._confirmar(
+            "Autorizar execução de comandos",
             f"Este plano executará {len(comandos)} comando(s) na SUA máquina, via PowerShell:\n\n"
             f"{corpo}\n\n"
             f"Ambiente de execução: {rotulo_ambiente}\n\n"
             "Os comandos rodam com as suas permissões. Edições serão gravadas (com .bak) "
             "na ordem do plano; se um comando com gate divergir, a sequência para.\n\n"
             "Autorizar a execução de TODOS os comandos acima?")
-        cx.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        cx.setDefaultButton(QMessageBox.StandardButton.No)
-        if cx.exec() != QMessageBox.StandardButton.Yes:
+        if not autorizado:
             self._resultado.setText("<span style='color:#d35400'>Execução cancelada. Nada foi rodado.</span>")
             return
 
