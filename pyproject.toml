@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyresumidor"
-version = "1.7.2"
+version = "1.7.3"
 description = "Toolkit de edicao de codigo assistida por IA (mapear, extrair, aplicar) com minimo de contexto/tokens."
 readme = "README.md"
 requires-python = ">=3.9"

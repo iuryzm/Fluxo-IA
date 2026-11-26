@@ -38,6 +38,9 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 - No histórico de uma sequência (modo C) interrompida por um gate, o breakdown
   por-arquivo pode listar arquivos preparados mas não gravados (a contagem
   principal de gravados está correta; o breakdown é caso de borda).
+- Página Aplicar: o texto de "Sequência preparada" (e demais avisos) fica num
+  QLabel sem rolagem; planos com muitos passos podem deixar a página mais alta
+  que a janela. Mover `_resultado` para uma área rolável.
 
 ## [WorkingAt]
 - No itens
@@ -48,6 +51,20 @@ e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 - No itens
+
+## [1.7.3] - 2026.11.26
+- Corrigido: o diálogo "Autorizar execução de comandos" (botão **Executar
+  sequência**) crescia com a lista de comandos e, com planos longos, empurrava os
+  botões Sim/Não para fora da tela. Novo helper `PaginaBase._confirmar`: texto
+  numa área rolável, diálogo limitado a ~80% da área disponível da tela e "Não"
+  como padrão. A confirmação de **Aplicar de verdade** (lista de arquivos) passou
+  a usar o mesmo diálogo.
+- Corrigido: ao aumentar a janela verticalmente, os campos de texto paravam de
+  crescer a partir de um limite — o `addStretch(1)` final do layout de
+  `PaginaBase` absorvia todo o espaço extra. Novo helper `PaginaBase._expandir`
+  dá fator 1 aos widgets expansíveis e zera o espaçador final (que só ocupa
+  espaço quando nenhum deles está visível). Aplicado em Aplicar (plano, código,
+  diff, saída dos comandos), Extrair (campo de entrada) e Estatísticas (gráfico).
 
 ## [1.7.2] - 2026.10.23
 - Corrigido: a saída dos comandos do modo sequenciado (modo C) perdia os
